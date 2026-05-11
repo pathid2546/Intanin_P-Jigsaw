@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Supplier Splitter V4", layout="wide")
+st.set_page_config(page_title="Supplier Splitter V5", layout="wide")
 
-st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (ซ้าย-ขวา พร้อมชื่อสาขา)")
+st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Auto-Fit & Auto-Zoom)")
 
 # --- ระบบความจำชื่อตัวย่อ ---
 if 'name_memory' not in st.session_state:
@@ -34,59 +34,65 @@ if uploaded_file:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             workbook  = writer.book
+            
+            # Formats
             total_format = workbook.add_format({'bold': True, 'bg_color': '#CFE2F3', 'border': 1, 'align': 'right'})
-
+            
             for supplier, sheet_name in current_mapping.items():
-                # จัดการชื่อชีต
                 clean_name = sheet_name.strip()[:31]
                 for char in r'[]:*?/\ ':
                     clean_name = clean_name.replace(char, ' ')
                 
                 df_sup = df_raw[df_raw['ซัพพลายเออร์'] == supplier].copy()
                 
-                # --- [ด้านซ้าย] แยกตามสาขา (เพิ่มคอลัมน์ชื่อสาขา) ---
-                # เรียงลำดับ: รหัสสาขา, ชื่อสาขา (จาก Store Name), โซน, รหัสสินค้า, รายการสินค้า, ซัพพลายเออร์, หน่วย, จำนวน
+                # --- [ด้านซ้าย] ---
                 left_data = df_sup.rename(columns={'Store Name': 'ชื่อสาขา', 'จำนวน': 'Total'})
                 left_cols = ['รหัสสาขา', 'ชื่อสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
                 left_display = left_data[left_cols].copy()
                 
-                # Logic: แสดงข้อมูลสาขาแค่บรรทัดแรกของกลุ่ม
                 mask = left_display['รหัสสาขา'].duplicated()
                 left_display.loc[mask, ['รหัสสาขา', 'ชื่อสาขา', 'โซน']] = ""
                 
-                # --- [ด้านขวา] สรุปยอด GroupBy เหมือนเดิม ---
+                # --- [ด้านขวา] ---
                 right_summary = df_sup.groupby(['รหัสสินค้า', 'รายการสินค้า'], as_index=False)['จำนวน'].sum()
                 right_summary.rename(columns={'จำนวน': 'Total'}, inplace=True)
-                right_summary.insert(0, 'ซัพพลายเออร์', "") # คอลัมน์ว่างด้านหน้า
+                right_summary.insert(0, 'ซัพพลายเออร์', "") 
 
-                # --- เขียนข้อมูลลง Excel (ซ้าย-ขวา) ---
-                # เขียนฝั่งซ้าย (เริ่ม A1)
+                # --- เขียนข้อมูล (ซ้าย-ขวา) ---
                 left_display.to_excel(writer, sheet_name=clean_name, index=False, startcol=0)
-                # เขียนฝั่งขวา (เริ่มคอลัมน์ J เพื่อเว้นระยะจากฝั่งซ้ายเล็กน้อย)
                 right_summary.to_excel(writer, sheet_name=clean_name, index=False, startcol=9)
 
                 worksheet = writer.sheets[clean_name]
                 
-                # --- เพิ่มแถว Grand Total ---
-                # ฝั่งซ้าย (Total อยู่คอลัมน์ที่ 8 คือ index 7)
+                # 1. ตั้งค่าการซูม (Zoom out เป็น 80%)
+                worksheet.set_zoom(80)
+                
+                # 2. เพิ่มแถว Grand Total
                 row_l = len(left_display) + 1
                 worksheet.write(row_l, 0, "Grand Total", total_format)
                 worksheet.write(row_l, 7, left_display['Total'].sum(), total_format)
                 
-                # ฝั่งขวา (Total อยู่คอลัมน์ L คือ index 11)
+                # 3. แก้ไขตำแหน่ง Total ฝั่งขวา (เลื่อนไป Column L คือ index 11)
                 row_r = len(right_summary) + 1
                 worksheet.write(row_r, 9, f"{supplier} Total", total_format)
+                # เลื่อนจาก index 10 เป็น 11 (ขยับ 1 ช่อง)
                 worksheet.write(row_r, 11, right_summary['Total'].sum(), total_format)
 
-                # ปรับขนาดคอลัมน์
-                worksheet.set_column('A:B', 15) # รหัสสาขา, ชื่อสาขา
-                worksheet.set_column('D:E', 30) # รหัสสินค้า, รายการสินค้า
-                worksheet.set_column('J:K', 30) # ฝั่งขวา
+                # 4. Auto-fit column widths (คำนวณขนาดอัตโนมัติ)
+                # ฝั่งซ้าย (Col A-H)
+                for i, col in enumerate(left_display.columns):
+                    max_len = max(left_display[col].astype(str).map(len).max(), len(col)) + 5
+                    worksheet.set_column(i, i, max_len)
+                
+                # ฝั่งขวา (Col J-L)
+                for i, col in enumerate(right_summary.columns):
+                    max_len = max(right_summary[col].astype(str).map(len).max(), len(col)) + 5
+                    worksheet.set_column(i+9, i+9, max_len)
 
-        st.success("✅ ระบบกลับมาเป็นแบบ ซ้าย-ขวา พร้อมเพิ่มชื่อสาขาฝั่งซ้ายเรียบร้อยครับ!")
+        st.success("✅ แก้ไขตำแหน่ง Total, เพิ่มระบบ Auto-Fit และตั้งค่า Zoom เรียบร้อยแล้ว!")
         st.download_button(
-            label="📥 ดาวน์โหลดไฟล์ Excel V4",
+            label="📥 ดาวน์โหลดไฟล์ Excel V5",
             data=output.getvalue(),
-            file_name="Supplier_Split_V4.xlsx",
+            file_name="Supplier_Split_V5.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
