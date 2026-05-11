@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Supplier Splitter V6.3", layout="wide")
+st.set_page_config(page_title="Supplier Splitter V6.4", layout="wide")
 
-st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Stable Auto-Fit)")
+st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Auto-Fit แก้ไขสมบูรณ์)")
 
 if 'name_memory' not in st.session_state:
     st.session_state['name_memory'] = {}
@@ -42,12 +42,12 @@ if uploaded_file:
                 
                 df_sup = df_raw[df_raw['ซัพพลายเออร์'] == supplier].copy()
                 
-                # --- [ฝั่งซ้าย] โครงสร้างตามภาพ ---
+                # --- [ฝั่งซ้าย] ---
                 left_display = df_sup.rename(columns={'Store Name': 'ชื่อสาขา', 'จำนวน': 'Total'})
                 left_cols = ['รหัสสาขา', 'ชื่อสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
                 left_final = left_display[left_cols].copy()
                 
-                # เก็บค่าดิบไว้คำนวณความกว้าง (กันพลาดเรื่อง Mask)
+                # เก็บค่าดิบไว้คำนวณความกว้าง (ก่อน Mask)
                 width_ref_left = left_final.copy()
                 
                 mask = left_final['รหัสสาขา'].duplicated()
@@ -58,7 +58,7 @@ if uploaded_file:
                 right_summary.rename(columns={'จำนวน': 'Total'}, inplace=True)
                 right_summary.insert(0, 'ซัพพลายเออร์', "")
 
-                # เขียนข้อมูล
+                # เขียนข้อมูล (ซ้ายเริ่ม A1, ขวาเริ่ม K1)
                 left_final.to_excel(writer, sheet_name=clean_name, index=False, startcol=0)
                 right_summary.to_excel(writer, sheet_name=clean_name, index=False, startcol=10)
 
@@ -75,38 +75,29 @@ if uploaded_file:
                 worksheet.write(row_r, 10, f"{supplier} Total", total_format)
                 worksheet.write(row_r, 13, right_summary['Total'].sum(), total_format)
 
-                # --- 🎯 ระบบ Auto-Fit ใหม่ (ป้องกัน TypeError ชัวร์ 100%) ---
-                def apply_auto_width(df, start_col):
+                # --- 🎯 ระบบ Auto-Fit ใหม่: อิงตามค่าที่ยาวที่สุดจริง ---
+                def apply_real_auto_width(df, start_col):
                     for i, col in enumerate(df.columns):
-                        # ดึงข้อมูลออกมาเป็น Series ของ string และจัดการค่าว่าง
-                        series = df[col].astype(str).fillna('')
+                        # 1. หาค่าที่ยาวที่สุดในคอลัมน์ (แปลงเป็น string และจัดการค่าว่าง)
+                        # 2. คำนวณความยาว Header ด้วย
+                        max_data_len = df[col].astype(str).str.len().max()
+                        header_len = len(str(col))
                         
-                        # คำนวณหาความยาวที่ยาวที่สุดในคอลัมน์ (รวม Header)
-                        if not series.empty:
-                            # ใช้ .apply(len) แทน .map(len) เพื่อความปลอดภัย หรือใช้ .str.len()
-                            max_val = series.str.len().max()
-                        else:
-                            max_val = 0
-                            
-                        header_val = len(str(col))
-                        final_w = max(max_val, header_val)
+                        # ใช้ตัวที่ยาวกว่าเป็นบรรทัดฐาน
+                        base_len = max(max_data_len, header_len)
                         
-                        # เผื่อค่าสำหรับภาษาไทย (สระ/วรรณยุกต์)
+                        # ปรับตัวคูณให้เหมาะสม (1.2 สำหรับภาษาอังกฤษ/ตัวเลข, 1.4 สำหรับภาษาไทย)
+                        # เพื่อให้คอลัมน์ "กระชับ" ไม่ใหญ่เกินไปเหมือนในรูป
                         if col in ['ชื่อสาขา', 'รายการสินค้า', 'ซัพพลายเออร์']:
-                            final_w = final_w * 1.6 # เพิ่มเป็น 1.6 เท่าเพื่อให้ไม่เบียด
+                            actual_width = base_len * 1.4
                         else:
-                            final_w = final_w + 2
+                            actual_width = base_len + 2
                             
-                        # ตั้งค่าความกว้าง (จำกัดไม่ให้เกิน 70 เผื่อข้อมูลหลุดมาประหลาดๆ)
-                        worksheet.set_column(start_col + i, start_col + i, min(final_w, 70))
+                        # ตั้งค่าความกว้างคอลัมน์โดยไม่ใช้ค่า Min/Max ที่เป็นตัวเลขคงที่
+                        worksheet.set_column(start_col + i, start_col + i, actual_width)
 
-                apply_auto_width(width_ref_left, 0)
-                apply_auto_width(right_summary, 10)
+                apply_real_auto_width(width_ref_left, 0)
+                apply_real_auto_width(right_summary, 10)
 
-        st.success("✅ แก้ไขปัญหา TypeError และปรับ Auto-Column Width เรียบร้อย!")
-        st.download_button(
-            label="📥 ดาวน์โหลดไฟล์ Excel V6.3",
-            data=output.getvalue(),
-            file_name="Supplier_Report_Final_V6.3.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        st.success("✅ แก้ไขระบบ Auto-Fit ให้กระชับตามข้อมูลจริงเรียบร้อย!")
+        st.download_button(label="📥 ดาวน์โหลดไฟล์ Excel V6.4", data=output.getvalue(), file_name="Supplier_Report_AutoFit.xlsx")
