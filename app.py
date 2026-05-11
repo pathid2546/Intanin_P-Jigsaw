@@ -2,108 +2,113 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Invoice Generator V7.0", layout="wide")
+st.set_page_config(page_title="Supplier All-in-One V7.1", layout="wide")
 
-st.title("📄 ระบบสร้างใบส่งสินค้าชั่วคราว (New Format)")
-
-if 'name_memory' not in st.session_state:
-    st.session_state['name_memory'] = {}
+st.title("📊 ระบบรวมข้อมูล (Summary + Invoice) ในชีทเดียว")
 
 uploaded_file = st.file_uploader("อัปโหลดไฟล์ Excel (Transport)", type=['xlsx'])
 
 if uploaded_file:
-    # อ่านข้อมูลจากชีต Transport
     df_raw = pd.read_excel(uploaded_file, sheet_name='Transport')
     df_raw = df_raw.dropna(subset=['ซัพพลายเออร์'])
     unique_suppliers = sorted(df_raw['ซัพพลายเออร์'].unique())
 
-    st.subheader("📝 กำหนดชื่อตัวย่อชีต (ยังคงระบบเดิมไว้)")
-    with st.form("sheet_name_form"):
-        cols = st.columns(3)
-        current_mapping = {}
-        for i, supplier in enumerate(unique_suppliers):
-            with cols[i % 3]:
-                remembered_name = st.session_state['name_memory'].get(supplier, str(supplier)[:10].strip())
-                current_mapping[supplier] = st.text_input(f"{supplier}:", value=remembered_name, key=f"input_{supplier}")
-        submit_button = st.form_submit_button("สร้างไฟล์ใบส่งสินค้า")
+    # แสดงรายการซัพพลายเออร์ที่พบ
+    st.info(f"พบซัพพลายเออร์ทั้งหมด {len(unique_suppliers)} ราย กำลังเตรียมสร้างรายงานรวม...")
 
-    if submit_button:
-        for sup, s_name in current_mapping.items():
-            st.session_state['name_memory'][sup] = s_name
-            
+    if st.button("สร้างไฟล์ Excel รวมทุกอย่าง"):
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             workbook = writer.book
             
-            # --- กำหนด Styles ตามรูปแบบใหม่ ---
+            # --- กำหนด Styles ---
             title_fmt = workbook.add_format({'bold': True, 'font_size': 16, 'align': 'center'})
-            header_label_fmt = workbook.add_format({'bold': True, 'font_size': 11})
-            table_head_fmt = workbook.add_format({'bold': True, 'border': 1, 'align': 'center', 'bg_color': '#F4F4F4'})
-            cell_border_fmt = workbook.add_format({'border': 1})
-            total_fmt = workbook.add_format({'bold': True, 'border': 1, 'align': 'center', 'bg_color': '#EEEEEE'})
-            footer_label_fmt = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'top'})
+            total_style = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1, 'align': 'right'})
+            table_head_fmt = workbook.add_format({'bold': True, 'border': 1, 'align': 'center', 'bg_color': '#CFE2F3'})
+            cell_border = workbook.add_format({'border': 1})
+            header_label_fmt = workbook.add_format({'bold': True})
+            footer_box_fmt = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'top'})
 
-            for supplier, sheet_name in current_mapping.items():
-                clean_name = sheet_name.strip()[:31]
-                for char in r'[]:*?/\ ':
-                    clean_name = clean_name.replace(char, ' ')
-                
-                # กรองข้อมูลซัพพลายเออร์
+            # สร้างชีทเดียวชื่อ "Combined_Report"
+            worksheet = workbook.add_worksheet("Combined_Report")
+            worksheet.set_zoom(80)
+            curr_row = 0
+
+            for supplier in unique_suppliers:
                 df_sup = df_raw[df_raw['ซัพพลายเออร์'] == supplier].copy()
                 
-                # แยกตามสาขา (Store Name) เพื่อสร้างใบส่งของแยกแต่ละสาขาในชีตเดียว (หรือแยกตามความเหมาะสม)
-                # ในที่นี้จะสร้างสรุปยอดรวมของซัพพลายเออร์นั้นๆ ในรูปแบบใบส่งของ
+                # --- PART 1: ตารางแบบเดิม (Summary Table) ---
+                worksheet.write(curr_row, 0, f"📌 ส่วนที่ 1: สรุปข้อมูล - {supplier}", header_label_fmt)
+                curr_row += 1
                 
-                worksheet = workbook.add_worksheet(clean_name)
-                worksheet.set_zoom(90)
-
-                # --- ส่วนหัวเอกสาร (Header) อิงตาม image_89132c.png ---
-                worksheet.merge_range('A1:E1', 'บริษัท โมบาย โลจิสติกส์ จำกัด', title_fmt)
-                worksheet.merge_range('A2:E2', 'ใบส่งสินค้าชั่วคราว', title_fmt)
+                # เตรียมข้อมูลฝั่งซ้าย (ตาม image_8928d1.png)
+                left_cols = ['รหัสสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'จำนวน']
+                left_final = df_sup[left_cols].copy()
+                left_final.rename(columns={'จำนวน': 'Total'}, inplace=True)
                 
-                worksheet.write('A4', 'Customer Name:', header_label_fmt)
-                worksheet.write('A5', 'Store Code:', header_label_fmt)
-                worksheet.write('A6', 'Store Name:', header_label_fmt)
-                worksheet.write('A7', 'Ship To:', header_label_fmt)
+                # เขียนหัวตาราง Summary
+                for c, col_name in enumerate(left_final.columns):
+                    worksheet.write(curr_row, c, col_name, table_head_fmt)
                 
-                worksheet.write('E4', f'Do. No. {supplier[:5]}', header_label_fmt)
-                worksheet.write('E5', 'Zone:', header_label_fmt)
-                worksheet.write('E6', 'Delivery Date:', header_label_fmt)
-
-                # --- ส่วนตารางสินค้า (Table) ---
-                headers = ['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']
-                for col_num, header in enumerate(headers):
-                    worksheet.write(9, col_num, header, table_head_fmt)
-
-                # ดึงข้อมูลสินค้า (Group รวมทุกสาขาของซัพพลายเออร์รายนั้น)
-                df_items = df_sup.groupby(['รหัสสินค้า', 'รายการสินค้า', 'หน่วย'], as_index=False)['จำนวน'].sum()
-                
-                curr_row = 10
-                for index, row in df_items.iterrows():
-                    worksheet.write(curr_row, 0, index + 1, cell_border_fmt)
-                    worksheet.write(curr_row, 1, row['รหัสสินค้า'], cell_border_fmt)
-                    worksheet.write(curr_row, 2, row['รายการสินค้า'], cell_border_fmt)
-                    worksheet.write(curr_row, 3, row['หน่วย'], cell_border_fmt)
-                    worksheet.write(curr_row, 4, row['จำนวน'], cell_border_fmt)
+                start_table_row = curr_row + 1
+                for i, row in left_final.iterrows():
                     curr_row += 1
-
-                # --- ส่วนท้ายตาราง (Total) ---
-                worksheet.merge_range(curr_row, 0, curr_row, 3, 'Total', total_fmt)
-                worksheet.write(curr_row, 4, df_items['จำนวน'].sum(), total_fmt)
+                    for c, val in enumerate(row):
+                        worksheet.write(curr_row, c, val, cell_border)
                 
-                # --- ส่วนลายเซ็น (Footer) ---
+                # Grand Total ฝั่งซ้าย
+                curr_row += 1
+                worksheet.write(curr_row, 0, "Grand Total", total_style)
+                worksheet.write(curr_row, 6, df_sup['จำนวน'].sum(), total_style)
+                
+                curr_row += 3 # เว้นช่องว่างระหว่างซัพพลายเออร์หรือส่วน
+
+                # --- PART 2: รูปแบบใบส่งของ (Invoice Format) ---
+                worksheet.merge_range(curr_row, 0, curr_row, 4, 'บริษัท โมบาย โลจิสติกส์ จำกัด', title_fmt)
+                curr_row += 1
+                worksheet.merge_range(curr_row, 0, curr_row, 4, f'ใบส่งสินค้าชั่วคราว ({supplier})', title_fmt)
                 curr_row += 2
-                footer_headers = ['ผู้รับสินค้า', 'ผู้ส่งสินค้า / ทะเบียนรถ', 'คลังสินค้า']
-                for i, head in enumerate(footer_headers):
-                    worksheet.merge_range(curr_row, i*2, curr_row, i*2+1, head, table_head_fmt)
-                    worksheet.merge_range(curr_row+1, i*2, curr_row+4, i*2+1, 'ชื่อ....................\nวันที่....................', footer_label_fmt)
+                
+                # Header Invoice (ตาม image_89132c.png)
+                worksheet.write(curr_row, 0, 'Customer Name:', header_label_fmt)
+                worksheet.write(curr_row, 4, 'Delivery Date:', header_label_fmt)
+                curr_row += 2
 
-                # ปรับขนาดคอลัมน์ให้พอดี
-                worksheet.set_column('A:A', 5)   # No.
-                worksheet.set_column('B:B', 15)  # Code
-                worksheet.set_column('C:C', 45)  # Name (ยาวพิเศษตามรูป)
-                worksheet.set_column('D:D', 12)  # Unit
-                worksheet.set_column('E:E', 10)  # QTY
+                # ตารางสินค้า Invoice
+                inv_headers = ['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']
+                for c, h in enumerate(inv_headers):
+                    worksheet.write(curr_row, c, h, table_head_fmt)
+                
+                df_inv = df_sup.groupby(['รหัสสินค้า', 'รายการสินค้า', 'หน่วย'], as_index=False)['จำนวน'].sum()
+                for i, row in df_inv.iterrows():
+                    curr_row += 1
+                    worksheet.write(curr_row, 0, i + 1, cell_border)
+                    worksheet.write(curr_row, 1, row['รหัสสินค้า'], cell_border)
+                    worksheet.write(curr_row, 2, row['รายการสินค้า'], cell_border)
+                    worksheet.write(curr_row, 3, row['หน่วย'], cell_border)
+                    worksheet.write(curr_row, 4, row['จำนวน'], cell_border)
+                
+                # Total Invoice
+                curr_row += 1
+                worksheet.merge_range(curr_row, 0, curr_row, 3, 'Total', total_style)
+                worksheet.write(curr_row, 4, df_inv['จำนวน'].sum(), total_style)
 
-        st.success("✅ สร้างใบส่งสินค้าชั่วคราวรูปแบบใหม่เรียบร้อย!")
-        st.download_button(label="📥 ดาวน์โหลดไฟล์ใบส่งสินค้า V7.0", data=output.getvalue(), file_name="Temporary_Invoice.xlsx")
+                # Footer ลายเซ็น (ตาม image_89132c.png)
+                curr_row += 2
+                f_heads = ['ผู้รับสินค้า', 'ผู้ส่งสินค้า', 'คลังสินค้า']
+                for i, head in enumerate(f_heads):
+                    worksheet.write(curr_row, i*1.5, head, header_label_fmt) # ปรับตำแหน่ง
+                    worksheet.write(curr_row+1, i*1.5, 'ชื่อ..................\nวันที่................', footer_box_fmt)
+                
+                curr_row += 6 # เว้นระยะห่างก่อนขึ้นซัพพลายเออร์คนถัดไป
+                worksheet.set_row(curr_row, 2, workbook.add_format({'bg_color': '#333333'})) # ขีดเส้นคั่นหนาๆ
+                curr_row += 2
+
+            # ปรับความกว้างคอลัมน์ให้เหมาะสมกับ "รายการสินค้า"
+            worksheet.set_column('A:A', 12) # รหัสสาขา
+            worksheet.set_column('C:C', 12) # รหัสสินค้า
+            worksheet.set_column('D:D', 45) # รายการสินค้า (กว้างพิเศษตามรูป)
+            worksheet.set_column('E:E', 25) # ซัพพลายเออร์
+
+        st.success("✅ รวมข้อมูลทุกซัพพลายเออร์ไว้ในชีทเดียวเรียบร้อย!")
+        st.download_button(label="📥 ดาวน์โหลดไฟล์ All-in-One", data=output.getvalue(), file_name="Supplier_Combined_Report.xlsx")
