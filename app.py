@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Supplier Splitter V6.7", layout="wide")
+st.set_page_config(page_title="Supplier Splitter V6.8", layout="wide")
 
-st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Restore Grand Total V6.7)")
+st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Full Option V6.8)")
 
 if 'name_memory' not in st.session_state:
     st.session_state['name_memory'] = {}
@@ -33,18 +33,8 @@ if uploaded_file:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             workbook = writer.book
-            # สร้าง Format สำหรับบรรทัด Total ให้สวยงามตามรูป
-            total_format = workbook.add_format({
-                'bold': True, 
-                'bg_color': '#D9EAD3', 
-                'border': 1, 
-                'align': 'right'
-            })
-            header_format = workbook.add_format({
-                'bold': True,
-                'bg_color': '#CFE2F3',
-                'border': 1
-            })
+            # Format สำหรับบรรทัดผลรวม
+            total_style = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1, 'align': 'right'})
 
             for supplier, sheet_name in current_mapping.items():
                 clean_name = sheet_name.strip()[:31]
@@ -53,59 +43,56 @@ if uploaded_file:
                 
                 df_sup = df_raw[df_raw['ซัพพลายเออร์'] == supplier].copy()
                 
-                # --- [ฝั่งซ้าย] ---
-                left_display = df_sup.rename(columns={'จำนวน': 'Total'})
-                left_cols = ['รหัสสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
-                left_final = left_display[left_cols].copy()
+                # --- [ฝั่งซ้าย: รายละเอียด] ---
+                left_df = df_sup.rename(columns={'จำนวน': 'Total'})
+                # เรียงคอลัมน์ตาม image_8928d1.png
+                cols_order = ['รหัสสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
+                left_final = left_df[cols_order].copy()
                 
-                # เก็บไว้คำนวณความกว้าง
-                width_ref_left = left_final.copy()
+                # เก็บค่าดิบไว้ใช้คำนวณ Auto-Fit (ก่อนทำ Mask)
+                raw_left_for_width = left_final.copy()
                 
-                # ทำ Mask ซ่อนค่าซ้ำ
+                # ซ่อนค่าซ้ำในคอลัมน์ รหัสสาขา, โซน
                 mask = left_final['รหัสสาขา'].duplicated()
                 left_final.loc[mask, ['รหัสสาขา', 'โซน']] = ""
                 
-                # --- [ฝั่งขวา] ---
+                # --- [ฝั่งขวา: สรุปยอด] ---
                 right_summary = df_sup.groupby(['รหัสสินค้า', 'รายการสินค้า'], as_index=False)['จำนวน'].sum()
                 right_summary.rename(columns={'จำนวน': 'Total'}, inplace=True)
                 right_summary.insert(0, 'ซัพพลายเออร์', "")
 
-                # เขียนข้อมูล
+                # เขียนข้อมูล (ซ้ายเริ่ม A1, ขวาเริ่ม J1)
                 left_final.to_excel(writer, sheet_name=clean_name, index=False, startcol=0)
                 right_summary.to_excel(writer, sheet_name=clean_name, index=False, startcol=9)
 
                 worksheet = writer.sheets[clean_name]
                 worksheet.set_zoom(80) 
                 
-                # --- 🎯 [แก้ไข] นำ Grand Total ฝั่งซ้ายกลับมา ---
-                last_row_l = len(left_final) + 1
-                worksheet.write(last_row_l, 0, "Grand Total", total_format)
-                # เขียนยอดรวมที่คอลัมน์ Total (index 6 เพราะเริ่ม 0)
-                worksheet.write(last_row_l, 6, df_sup['จำนวน'].sum(), total_format)
+                # --- 🎯 เพิ่ม Grand Total ฝั่งซ้าย (แถวสุดท้ายของตารางซ้าย) ---
+                row_l = len(left_final) + 1
+                worksheet.write(row_l, 0, "Grand Total", total_style)
+                worksheet.write(row_l, 6, df_sup['จำนวน'].sum(), total_style) # คอลัมน์ G (index 6)
                 
-                # --- [ฝั่งขวา] Total สรุป ---
-                last_row_r = len(right_summary) + 1
-                worksheet.write(last_row_r, 9, f"{supplier} Total", total_format)
-                # เขียนยอดรวมที่คอลัมน์ Total ของฝั่งขวา (เริ่มที่ J=9 ดังนั้น M=12)
-                worksheet.write(last_row_r, 12, right_summary['Total'].sum(), total_format)
+                # --- 🎯 เพิ่ม Total ฝั่งขวา (แถวสุดท้ายของตารางขวา) ---
+                row_r = len(right_summary) + 1
+                worksheet.write(row_r, 9, f"{supplier} Total", total_style) # คอลัมน์ J (index 9)
+                worksheet.write(row_r, 12, right_summary['Total'].sum(), total_style) # คอลัมน์ M (index 12)
 
-                # --- ระบบ Auto-Fit (เน้นความกะทัดรัดตามรูป) ---
-                def apply_final_autofit(df, start_col):
+                # --- ระบบ Auto-Fit แบบแม่นยำ ---
+                def set_optimal_width(df, start_col_idx):
                     for i, col in enumerate(df.columns):
-                        max_data = df[col].astype(str).str.len().max()
-                        max_header = len(str(col))
-                        base_w = max(max_data, max_header)
-                        
-                        # เผื่อสระภาษาไทยเล็กน้อย
-                        if any(ord(c) > 128 for c in str(df[col].iloc[0]) if not pd.isna(df[col].iloc[0])):
-                            final_w = base_w * 1.2
-                        else:
-                            final_w = base_w + 2
-                        
-                        worksheet.set_column(start_col + i, start_col + i, final_w)
+                        # หาค่าที่ยาวที่สุดในคอลัมน์ (รวม Header)
+                        max_len = max(
+                            df[col].astype(str).map(len).max(), 
+                            len(str(col))
+                        )
+                        # ปรับ Factor สำหรับภาษาไทยให้พอดี ไม่กว้างเกินไป
+                        is_thai = any(ord(c) > 128 for c in str(df[col].iloc[0]) if not pd.isna(df[col].iloc[0]))
+                        final_w = max_len * (1.2 if is_thai else 1.0) + 2
+                        worksheet.set_column(start_col_idx + i, start_col_idx + i, final_w)
 
-                apply_final_autofit(width_ref_left, 0)
-                apply_final_autofit(right_summary, 9)
+                set_optimal_width(raw_left_for_width, 0)
+                set_optimal_width(right_summary, 9)
 
-        st.success("✅ นำบรรทัด Grand Total กลับมาและปรับขนาดคอลัมน์เรียบร้อย!")
-        st.download_button(label="📥 ดาวน์โหลดไฟล์ Excel V6.7", data=output.getvalue(), file_name="Supplier_Split_Fixed_Final.xlsx")
+        st.success("✅ สร้างไฟล์เรียบร้อย พร้อมบรรทัด Grand Total และ Auto-Fit ที่สมบูรณ์!")
+        st.download_button(label="📥 ดาวน์โหลดไฟล์ Excel", data=output.getvalue(), file_name="Supplier_Split_Final_V6.8.xlsx")
