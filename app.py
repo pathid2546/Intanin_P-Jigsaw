@@ -108,4 +108,4 @@ if uploaded_file:
                 apply_final_autofit(right_summary, 9)
 
         st.success("✅ นำบรรทัด Grand Total กลับมาและปรับขนาดคอลัมน์เรียบร้อย!")
-        st.download_button(label="📥 ดาวน์โหลดไฟล์ Excel V6.7", data=output.getvalue(), file_name="Supplier_Split_Fixed_Final.xlsx")อ
+        st.download_button(label="📥 ดาวน์โหลดไฟล์ Excel V6.7", data=output.getvalue(), file_name="Supplier_Split_Fixed_Final.xlsx")
