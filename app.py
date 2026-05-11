@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Supplier Splitter V5.1", layout="wide")
+st.set_page_config(page_title="Supplier Splitter V5.2", layout="wide")
 
-st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Fixed Auto-Fit)")
+st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Stable Auto-Fit & Zoom)")
 
 if 'name_memory' not in st.session_state:
     st.session_state['name_memory'] = {}
@@ -47,6 +47,7 @@ if uploaded_file:
                 left_cols = ['รหัสสาขา', 'ชื่อสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
                 left_display = left_data[left_cols].copy()
                 
+                # Mask ข้อมูลที่ซ้ำเพื่อให้ดูง่าย
                 mask = left_display['รหัสสาขา'].duplicated()
                 left_display.loc[mask, ['รหัสสาขา', 'ชื่อสาขา', 'โซน']] = ""
                 
@@ -60,38 +61,38 @@ if uploaded_file:
                 right_summary.to_excel(writer, sheet_name=clean_name, index=False, startcol=9)
 
                 worksheet = writer.sheets[clean_name]
-                worksheet.set_zoom(80)
+                worksheet.set_zoom(80) # ซูมออกให้เห็นภาพรวม
                 
-                # Grand Total ซ้าย
+                # Grand Total ซ้าย (คอลัมน์ H / index 7)
                 row_l = len(left_display) + 1
                 worksheet.write(row_l, 0, "Grand Total", total_format)
                 worksheet.write(row_l, 7, left_display['Total'].sum(), total_format)
                 
-                # Total ขวา (เลื่อนไปช่องที่ 11)
+                # Total ขวา (คอลัมน์ M / index 12) ขยับเลื่อนไป 1 ช่องตามสั่ง
                 row_r = len(right_summary) + 1
                 worksheet.write(row_r, 9, f"{supplier} Total", total_format)
-                worksheet.write(row_r, 11, right_summary['Total'].sum(), total_format)
+                worksheet.write(row_r, 12, right_summary['Total'].sum(), total_format)
 
-                # --- แก้ไขส่วน Auto-fit (เพิ่ม Error Handling) ---
-                # ฝั่งซ้าย (Col 0-7)
+                # --- ระบบ Auto-fit แบบปลอดภัย ---
+                # ฝั่งซ้าย (0-7)
                 for i, col in enumerate(left_display.columns):
-                    column_data = left_display[col].astype(str)
-                    # หาค่าความยาวสูงสุด ถ้าไม่มีข้อมูลให้ใช้ความยาวชื่อคอลัมน์แทน
-                    max_len = column_data.map(len).max() if not column_data.empty else 0
-                    max_len = max(max_len, len(str(col))) + 5
-                    worksheet.set_column(i, i, min(max_len, 50)) # จำกัดความกว้างสูงสุดไม่เกิน 50
+                    # ใช้ str.len() ของ pandas แทนการ map(len) เพื่อเลี่ยง Error
+                    max_val_len = left_display[col].astype(str).str.len().max()
+                    header_len = len(str(col))
+                    final_width = max(max_val_len, header_len) + 5
+                    worksheet.set_column(i, i, min(final_width, 60))
                 
-                # ฝั่งขวา (Col 9-11)
+                # ฝั่งขวา (9-12)
                 for i, col in enumerate(right_summary.columns):
-                    column_data = right_summary[col].astype(str)
-                    max_len = column_data.map(len).max() if not column_data.empty else 0
-                    max_len = max(max_len, len(str(col))) + 5
-                    worksheet.set_column(i+9, i+9, min(max_len, 50))
+                    max_val_len = right_summary[col].astype(str).str.len().max()
+                    header_len = len(str(col))
+                    final_width = max(max_val_len, header_len) + 5
+                    worksheet.set_column(i+9, i+9, min(final_width, 60))
 
-        st.success("✅ แก้ไข Error เรียบร้อย! ลองดาวน์โหลดไฟล์อีกครั้งครับ")
+        st.success("✅ แก้ไข Error และจัดตำแหน่ง Total เรียบร้อยแล้ว!")
         st.download_button(
-            label="📥 ดาวน์โหลดไฟล์ Excel",
+            label="📥 ดาวน์โหลดไฟล์ Excel V5.2",
             data=output.getvalue(),
-            file_name="Supplier_Split_Fixed.xlsx",
+            file_name="Supplier_Split_V5_2.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
