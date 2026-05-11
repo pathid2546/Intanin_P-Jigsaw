@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Supplier Splitter V6.2", layout="wide")
+st.set_page_config(page_title="Supplier Splitter V6.3", layout="wide")
 
-st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Auto-Column Width Fix)")
+st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Stable Auto-Fit)")
 
 if 'name_memory' not in st.session_state:
     st.session_state['name_memory'] = {}
@@ -42,62 +42,71 @@ if uploaded_file:
                 
                 df_sup = df_raw[df_raw['ซัพพลายเออร์'] == supplier].copy()
                 
-                # --- [ฝั่งซ้าย] โครงสร้างตาม image_898a4c.png ---
+                # --- [ฝั่งซ้าย] โครงสร้างตามภาพ ---
                 left_display = df_sup.rename(columns={'Store Name': 'ชื่อสาขา', 'จำนวน': 'Total'})
                 left_cols = ['รหัสสาขา', 'ชื่อสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
                 left_final = left_display[left_cols].copy()
                 
-                # เก็บค่าต้นฉบับไว้คำนวณความกว้างก่อนทำ Masking
-                raw_left_for_width = left_final.copy()
+                # เก็บค่าดิบไว้คำนวณความกว้าง (กันพลาดเรื่อง Mask)
+                width_ref_left = left_final.copy()
                 
                 mask = left_final['รหัสสาขา'].duplicated()
                 left_final.loc[mask, ['รหัสสาขา', 'ชื่อสาขา', 'โซน']] = ""
                 
-                # --- [ฝั่งขวา] โครงสร้างตาม image_8a19f0.png ---
+                # --- [ฝั่งขวา] ---
                 right_summary = df_sup.groupby(['รหัสสินค้า', 'รายการสินค้า'], as_index=False)['จำนวน'].sum()
                 right_summary.rename(columns={'จำนวน': 'Total'}, inplace=True)
                 right_summary.insert(0, 'ซัพพลายเออร์', "")
 
-                # เขียนข้อมูล (ซ้าย A1, ขวา K1)
+                # เขียนข้อมูล
                 left_final.to_excel(writer, sheet_name=clean_name, index=False, startcol=0)
                 right_summary.to_excel(writer, sheet_name=clean_name, index=False, startcol=10)
 
                 worksheet = writer.sheets[clean_name]
                 worksheet.set_zoom(80) 
                 
-                # Grand Total ซ้าย (Col H)
+                # Grand Total ซ้าย
                 row_l = len(left_final) + 1
                 worksheet.write(row_l, 0, "Grand Total", total_format)
                 worksheet.write(row_l, 7, df_sup['จำนวน'].sum(), total_format)
                 
-                # Total ขวา (Col N / index 13) ให้ตรงกับยอดสินค้า
+                # Total ขวา (Col N / index 13)
                 row_r = len(right_summary) + 1
                 worksheet.write(row_r, 10, f"{supplier} Total", total_format)
                 worksheet.write(row_r, 13, right_summary['Total'].sum(), total_format)
 
-                # --- 🎯 แก้ไขจุดสำคัญ: ระบบ Auto-Fit อิงตามข้อมูลยาวที่สุดจริง ---
-                def set_optimal_width(df, start_col_idx):
+                # --- 🎯 ระบบ Auto-Fit ใหม่ (ป้องกัน TypeError ชัวร์ 100%) ---
+                def apply_auto_width(df, start_col):
                     for i, col in enumerate(df.columns):
-                        # หาค่าที่ยาวที่สุดในคอลัมน์ (รวม Header)
-                        # ใช้ Logic เผื่อสระภาษาไทยโดยการคูณ 1.2 และบวกเพิ่มเล็กน้อย
-                        max_len = max(
-                            df[col].astype(str).map(len).max(), 
-                            len(str(col))
-                        ) + 2
-                        # สำหรับคอลัมน์ภาษาไทย (รายการสินค้า, ชื่อสาขา) ให้กว้างขึ้นอีกนิด
-                        if col in ['ชื่อสาขา', 'รายการสินค้า', 'ซัพพลายเออร์']:
-                            max_len = max_len * 1.5 
+                        # ดึงข้อมูลออกมาเป็น Series ของ string และจัดการค่าว่าง
+                        series = df[col].astype(str).fillna('')
                         
-                        worksheet.set_column(start_col_idx + i, start_col_idx + i, max_len)
+                        # คำนวณหาความยาวที่ยาวที่สุดในคอลัมน์ (รวม Header)
+                        if not series.empty:
+                            # ใช้ .apply(len) แทน .map(len) เพื่อความปลอดภัย หรือใช้ .str.len()
+                            max_val = series.str.len().max()
+                        else:
+                            max_val = 0
+                            
+                        header_val = len(str(col))
+                        final_w = max(max_val, header_val)
+                        
+                        # เผื่อค่าสำหรับภาษาไทย (สระ/วรรณยุกต์)
+                        if col in ['ชื่อสาขา', 'รายการสินค้า', 'ซัพพลายเออร์']:
+                            final_w = final_w * 1.6 # เพิ่มเป็น 1.6 เท่าเพื่อให้ไม่เบียด
+                        else:
+                            final_w = final_w + 2
+                            
+                        # ตั้งค่าความกว้าง (จำกัดไม่ให้เกิน 70 เผื่อข้อมูลหลุดมาประหลาดๆ)
+                        worksheet.set_column(start_col + i, start_col + i, min(final_w, 70))
 
-                # สั่งรัน Auto-Fit ทั้งสองฝั่ง
-                set_optimal_width(raw_left_for_width, 0)
-                set_optimal_width(right_summary, 10)
+                apply_auto_width(width_ref_left, 0)
+                apply_auto_width(right_summary, 10)
 
-        st.success("✅ แก้ไขระบบ Auto-Column Width อิงตามข้อมูลที่ยาวที่สุดเรียบร้อย!")
+        st.success("✅ แก้ไขปัญหา TypeError และปรับ Auto-Column Width เรียบร้อย!")
         st.download_button(
-            label="📥 ดาวน์โหลดไฟล์ Excel V6.2",
+            label="📥 ดาวน์โหลดไฟล์ Excel V6.3",
             data=output.getvalue(),
-            file_name="Supplier_Report_Final.xlsx",
+            file_name="Supplier_Report_Final_V6.3.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
