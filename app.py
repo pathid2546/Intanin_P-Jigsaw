@@ -2,93 +2,89 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Supplier Splitter", layout="wide")
+st.set_page_config(page_title="Supplier Splitter Pro", layout="wide")
 
-st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (พร้อมระบบจำชื่อตัวย่อ)")
+st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Layout แยกสาขา & สรุปยอด)")
 
-# --- ระบบจัดการความจำ (Session State) ---
+# --- ระบบความจำชื่อตัวย่อ ---
 if 'name_memory' not in st.session_state:
-    # สร้าง Dictionary ว่างไว้เก็บความจำในครั้งแรกที่เปิดแอป
-    st.session_state['name_memory'] = {
-        "บริษัท อีซี่ อินเตอร์เนชั่นแนล": "EZY",
-        "บริษัท ซีนโนวา จำกัด": "SYN"
-    }
+    st.session_state['name_memory'] = {}
 
 uploaded_file = st.file_uploader("อัปโหลดไฟล์ Excel (Transport)", type=['xlsx'])
 
 if uploaded_file:
+    # อ่านข้อมูลจาก Transport
     df_raw = pd.read_excel(uploaded_file, sheet_name='Transport')
     df_raw = df_raw.dropna(subset=['ซัพพลายเออร์'])
     unique_suppliers = sorted(df_raw['ซัพพลายเออร์'].unique())
 
-    st.subheader("📝 ตรวจสอบและแก้ไขชื่อตัวย่อ")
-    
-    # สร้าง Form เพื่อให้กรอกข้อมูล
+    st.subheader("📝 กำหนดชื่อตัวย่อชีต")
     with st.form("sheet_name_form"):
-        cols = st.columns(3) # แบ่งเป็น 3 คอลัมน์ให้ดูง่ายขึ้น
+        cols = st.columns(3)
         current_mapping = {}
-        
         for i, supplier in enumerate(unique_suppliers):
             with cols[i % 3]:
-                # ดึงค่าจากความจำ ถ้าไม่มีให้ใช้ชื่อเต็มตัดเหลือ 10 ตัวเป็นค่าเริ่มต้น
                 remembered_name = st.session_state['name_memory'].get(supplier, str(supplier)[:10].strip())
-                
-                # แสดงช่องกรอกข้อมูล
-                user_input = st.text_input(
-                    f"ซัพพลายเออร์: {supplier}", 
-                    value=remembered_name, 
-                    key=f"input_{supplier}"
-                )
-                current_mapping[supplier] = user_input
-        
-        submit_button = st.form_submit_button("บันทึกชื่อตัวย่อและสร้างไฟล์ Excel")
+                current_mapping[supplier] = st.text_input(f"{supplier}:", value=remembered_name, key=f"input_{supplier}")
+        submit_button = st.form_submit_button("สร้างไฟล์ Excel")
 
     if submit_button:
-        # อัปเดตความจำใหม่ตามที่ผู้ใช้กรอกล่าสุด
+        # บันทึกความจำ
         for sup, s_name in current_mapping.items():
             st.session_state['name_memory'][sup] = s_name
-        
+            
         output = io.BytesIO()
-        try:
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                for supplier, sheet_name in current_mapping.items():
-                    # ทำความสะอาดชื่อ Sheet (ห้ามเกิน 31 ตัว และห้ามมีตัวอักษรพิเศษ)
-                    clean_name = sheet_name.strip()[:31]
-                    for char in r'[]:*?/\ ':
-                        clean_name = clean_name.replace(char, ' ')
-                    
-                    df_sup = df_raw[df_raw['ซัพพลายเออร์'] == supplier].copy()
-                    
-                    # ข้อมูลฝั่งซ้าย (แยกสาขา)
-                    left_side = df_sup[['รหัสสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'จำนวน']].copy()
-                    left_side.rename(columns={'จำนวน': 'Total'}, inplace=True)
-                    
-                    # ข้อมูลฝั่งขวา (สรุปยอด)
-                    right_side = df_sup.groupby(['ซัพพลายเออร์', 'รหัสสินค้า', 'รายการสินค้า'], as_index=False)['จำนวน'].sum()
-                    right_side.rename(columns={'จำนวน': 'Total'}, inplace=True)
-                    
-                    # เขียนลง Excel
-                    left_side.to_excel(writer, sheet_name=clean_name, index=False, startcol=0)
-                    right_side.to_excel(writer, sheet_name=clean_name, index=False, startcol=9)
-                    
-                    # ตกแต่ง Format เบื้องต้น
-                    worksheet = writer.sheets[clean_name]
-                    worksheet.set_column('A:G', 15)
-                    worksheet.set_column('I:L', 20)
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            for supplier, sheet_name in current_mapping.items():
+                clean_name = sheet_name.strip()[:31]
+                df_sup = df_raw[df_raw['ซัพพลายเออร์'] == supplier].copy()
+                
+                # --- [ด้านซ้าย] เตรียมข้อมูลแยกสาขา ---
+                left_data = df_sup[['รหัสสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'จำนวน']].copy()
+                left_data.rename(columns={'จำนวน': 'Total'}, inplace=True)
+                
+                # Logic: ทำให้ รหัสสาขา และ โซน แสดงแค่บรรทัดแรกของกลุ่ม
+                left_data['รหัสสาขา'] = left_data['รหัสสาขา'].mask(left_data['รหัสสาขา'].duplicated(), "")
+                # (หมายเหตุ: ถ้าต้องการให้โซนว่างด้วยเมื่อรหัสสาขาซ้ำ)
+                left_data.loc[left_data['รหัสสาขา'] == "", 'โซน'] = ""
+                
+                # --- [ด้านขวา] เตรียมข้อมูลสรุปยอด ---
+                right_data = df_sup.groupby(['รหัสสินค้า', 'รายการสินค้า'], as_index=False)['จำนวน'].sum()
+                right_data.rename(columns={'จำนวน': 'Total'}, inplace=True)
+                right_data.insert(0, 'ซัพพลายเออร์', "") # เพิ่มคอลัมน์ว่างด้านหน้าตามรูป
 
-            st.success("✅ บันทึกชื่อตัวย่อลงในระบบจำแล้ว และสร้างไฟล์เสร็จสิ้น!")
-            st.download_button(
-                label="📥 ดาวน์โหลดไฟล์ Excel",
-                data=output.getvalue(),
-                file_name="Supplier_Split_Report.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        except Exception as e:
-            st.error(f"Error: {e}")
+                # --- เขียนข้อมูลลง Sheet ---
+                # เขียนฝั่งซ้าย
+                left_data.to_excel(writer, sheet_name=clean_name, index=False, startrow=0, startcol=0)
+                # เขียนฝั่งขวา (เริ่มคอลัมน์ I คือ col index 8)
+                right_data.to_excel(writer, sheet_name=clean_name, index=False, startrow=0, startcol=8)
 
-else:
-    st.info("กรุณาอัปโหลดไฟล์ข้อมูลดิบเพื่อเริ่มทำงาน")
+                # --- ตกแต่งและเพิ่ม Grand Total ด้วย XlsxWriter ---
+                workbook  = writer.book
+                worksheet = writer.sheets[clean_name]
+                
+                header_format = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1})
+                total_format  = workbook.add_format({'bold': True, 'bg_color': '#CFE2F3', 'border': 1})
+                
+                # เพิ่ม Grand Total ด้านซ้าย
+                last_row_left = len(left_data) + 1
+                worksheet.write(last_row_left, 0, "Grand Total", total_format)
+                worksheet.write(last_row_left, 6, left_data['Total'].sum(), total_format)
+                
+                # เพิ่ม Total ด้านขวา
+                last_row_right = len(right_data) + 1
+                worksheet.write(last_row_right, 8, f"{supplier} Total", total_format)
+                worksheet.write(last_row_right, 10, right_data['Total'].sum(), total_format)
 
-# แสดงสถานะความจำปัจจุบัน (Optional - เอาไว้เช็ค)
-if st.checkbox("ดูรายชื่อตัวย่อที่ระบบจำไว้"):
-    st.write(st.session_state['name_memory'])
+                # ปรับขนาดคอลัมน์
+                worksheet.set_column('A:B', 10)
+                worksheet.set_column('C:D', 25)
+                worksheet.set_column('I:J', 25)
+
+        st.success("✅ ประมวลผลสำเร็จ!")
+        st.download_button(
+            label="📥 ดาวน์โหลดไฟล์ Excel",
+            data=output.getvalue(),
+            file_name="Supplier_Formatted_Report.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
