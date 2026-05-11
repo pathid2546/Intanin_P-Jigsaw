@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Supplier Splitter V5.2", layout="wide")
+st.set_page_config(page_title="Supplier Splitter V5.3", layout="wide")
 
-st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Stable Auto-Fit & Zoom)")
+st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Compact Auto-Fit)")
 
 if 'name_memory' not in st.session_state:
     st.session_state['name_memory'] = {}
@@ -43,11 +43,12 @@ if uploaded_file:
                 df_sup = df_raw[df_raw['ซัพพลายเออร์'] == supplier].copy()
                 
                 # --- ฝั่งซ้าย ---
+                # เพิ่ม 'Store Name' เปลี่ยนเป็น 'ชื่อสาขา'
                 left_data = df_sup.rename(columns={'Store Name': 'ชื่อสาขา', 'จำนวน': 'Total'})
                 left_cols = ['รหัสสาขา', 'ชื่อสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
                 left_display = left_data[left_cols].copy()
                 
-                # Mask ข้อมูลที่ซ้ำเพื่อให้ดูง่าย
+                # Mask ข้อมูลที่ซ้ำ
                 mask = left_display['รหัสสาขา'].duplicated()
                 left_display.loc[mask, ['รหัสสาขา', 'ชื่อสาขา', 'โซน']] = ""
                 
@@ -61,38 +62,39 @@ if uploaded_file:
                 right_summary.to_excel(writer, sheet_name=clean_name, index=False, startcol=9)
 
                 worksheet = writer.sheets[clean_name]
-                worksheet.set_zoom(80) # ซูมออกให้เห็นภาพรวม
+                worksheet.set_zoom(80) 
                 
-                # Grand Total ซ้าย (คอลัมน์ H / index 7)
+                # Grand Total ซ้าย (Col H / index 7)
                 row_l = len(left_display) + 1
                 worksheet.write(row_l, 0, "Grand Total", total_format)
                 worksheet.write(row_l, 7, left_display['Total'].sum(), total_format)
                 
-                # Total ขวา (คอลัมน์ M / index 12) ขยับเลื่อนไป 1 ช่องตามสั่ง
+                # Total ขวา (Col L / index 11) - ปรับตำแหน่งให้ตรงตารางสรุป
                 row_r = len(right_summary) + 1
                 worksheet.write(row_r, 9, f"{supplier} Total", total_format)
-                worksheet.write(row_r, 12, right_summary['Total'].sum(), total_format)
+                worksheet.write(row_r, 11, right_summary['Total'].sum(), total_format)
 
-                # --- ระบบ Auto-fit แบบปลอดภัย ---
+                # --- ระบบ Auto-fit แบบ Compact (อิงตามตัวยาวสุด) ---
                 # ฝั่งซ้าย (0-7)
                 for i, col in enumerate(left_display.columns):
-                    # ใช้ str.len() ของ pandas แทนการ map(len) เพื่อเลี่ยง Error
+                    # หาค่าความยาวสูงสุดจากข้อมูลในคอลัมน์ (แปลงเป็น string ก่อน)
                     max_val_len = left_display[col].astype(str).str.len().max()
                     header_len = len(str(col))
-                    final_width = max(max_val_len, header_len) + 5
-                    worksheet.set_column(i, i, min(final_width, 60))
+                    # ใช้ค่าที่ยาวที่สุด และบวกเผื่อแค่ 2 (สำหรับระยะห่างขอบเล็กน้อย)
+                    final_width = max(max_val_len, header_len) + 2
+                    worksheet.set_column(i, i, final_width)
                 
-                # ฝั่งขวา (9-12)
+                # ฝั่งขวา (9-11)
                 for i, col in enumerate(right_summary.columns):
                     max_val_len = right_summary[col].astype(str).str.len().max()
                     header_len = len(str(col))
-                    final_width = max(max_val_len, header_len) + 5
-                    worksheet.set_column(i+9, i+9, min(final_width, 60))
+                    final_width = max(max_val_len, header_len) + 2
+                    worksheet.set_column(i+9, i+9, final_width)
 
-        st.success("✅ แก้ไข Error และจัดตำแหน่ง Total เรียบร้อยแล้ว!")
+        st.success("✅ ปรับปรุงความกว้างคอลัมน์ให้กระชับอิงตามข้อมูลจริงเรียบร้อย!")
         st.download_button(
-            label="📥 ดาวน์โหลดไฟล์ Excel V5.2",
+            label="📥 ดาวน์โหลดไฟล์ Excel V5.3",
             data=output.getvalue(),
-            file_name="Supplier_Split_V5_2.xlsx",
+            file_name="Supplier_Split_V5_3.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
