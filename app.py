@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="Supplier Splitter V6.7.1", layout="wide")
+st.set_page_config(page_title="Supplier Splitter V6.5", layout="wide")
 
-st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (Base V6.7 + ชื่อสาขา)")
+st.title("📦 ระบบแยกข้อมูลซัพพลายเออร์ (True Auto-Fit)")
 
 if 'name_memory' not in st.session_state:
     st.session_state['name_memory'] = {}
@@ -33,18 +33,7 @@ if uploaded_file:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             workbook = writer.book
-            # สร้าง Format สำหรับบรรทัด Total
-            total_format = workbook.add_format({
-                'bold': True, 
-                'bg_color': '#D9EAD3', 
-                'border': 1, 
-                'align': 'right'
-            })
-            header_format = workbook.add_format({
-                'bold': True,
-                'bg_color': '#CFE2F3',
-                'border': 1
-            })
+            total_format = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1, 'align': 'right'})
 
             for supplier, sheet_name in current_mapping.items():
                 clean_name = sheet_name.strip()[:31]
@@ -53,62 +42,61 @@ if uploaded_file:
                 
                 df_sup = df_raw[df_raw['ซัพพลายเออร์'] == supplier].copy()
                 
-                # --- [ฝั่งซ้าย] เพิ่ม 'Store Name' กลับมา ---
+                # --- [เตรียมข้อมูลฝั่งซ้าย] ---
                 left_display = df_sup.rename(columns={'Store Name': 'ชื่อสาขา', 'จำนวน': 'Total'})
-                # เรียงคอลัมน์ใหม่: รหัสสาขา, ชื่อสาขา, โซน, รหัสสินค้า, รายการสินค้า, ซัพพลายเออร์, หน่วย, Total
                 left_cols = ['รหัสสาขา', 'ชื่อสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
                 left_final = left_display[left_cols].copy()
                 
-                # เก็บค่าดิบไว้คำนวณความกว้าง (ให้ชื่อสาขาไม่โดนตัด)
+                # เก็บค่าก่อนทำ Mask เพื่อใช้วัดความกว้างที่ยาวที่สุดจริงๆ
                 width_ref_left = left_final.copy()
                 
-                # ทำ Mask ซ่อนค่าซ้ำ (รหัสสาขา, ชื่อสาขา, โซน)
+                # ทำ Masking ซ่อนค่าซ้ำตามรูป image_93fbee.png
                 mask = left_final['รหัสสาขา'].duplicated()
                 left_final.loc[mask, ['รหัสสาขา', 'ชื่อสาขา', 'โซน']] = ""
                 
-                # --- [ฝั่งขวา] ตารางสรุปสินค้า ---
+                # --- [เตรียมข้อมูลฝั่งขวา] ---
                 right_summary = df_sup.groupby(['รหัสสินค้า', 'รายการสินค้า'], as_index=False)['จำนวน'].sum()
                 right_summary.rename(columns={'จำนวน': 'Total'}, inplace=True)
                 right_summary.insert(0, 'ซัพพลายเออร์', "")
 
-                # เขียนข้อมูล (ฝั่งซ้ายเริ่มคอลัมน์ A, ฝั่งขวาขยับไปเริ่มคอลัมน์ K เพื่อไม่ให้เบียดกัน)
+                # เขียนข้อมูลลงชีต
                 left_final.to_excel(writer, sheet_name=clean_name, index=False, startcol=0)
                 right_summary.to_excel(writer, sheet_name=clean_name, index=False, startcol=10)
 
                 worksheet = writer.sheets[clean_name]
                 worksheet.set_zoom(80) 
                 
-                # --- 🎯 Grand Total ฝั่งซ้าย ---
-                last_row_l = len(left_final) + 1
-                worksheet.write(last_row_l, 0, "Grand Total", total_format)
-                # เขียนยอดรวมที่คอลัมน์ Total (ตอนนี้คือ index 7 เพราะเพิ่มชื่อสาขามา)
-                worksheet.write(last_row_l, 7, df_sup['จำนวน'].sum(), total_format)
+                # Grand Total และ Summary Total (ตำแหน่ง Col N / index 13)
+                row_l = len(left_final) + 1
+                worksheet.write(row_l, 0, "Grand Total", total_format)
+                worksheet.write(row_l, 7, df_sup['จำนวน'].sum(), total_format)
                 
-                # --- [ฝั่งขวา] Total สรุป ---
-                last_row_r = len(right_summary) + 1
-                # เริ่มที่คอลัมน์ K=10 ดังนั้นยอดรวมขยับไปที่ N=13
-                worksheet.write(last_row_r, 10, f"{supplier} Total", total_format)
-                worksheet.write(last_row_r, 13, right_summary['Total'].sum(), total_format)
+                row_r = len(right_summary) + 1
+                worksheet.write(row_r, 10, f"{supplier} Total", total_format)
+                worksheet.write(row_r, 13, right_summary['Total'].sum(), total_format)
 
-                # --- ระบบ Auto-Fit (เน้นความกะทัดรัด) ---
-                def apply_final_autofit(df, start_col):
-                    for i, col in enumerate(df.columns):
-                        # ป้องกัน Error กรณีข้อมูลว่าง
-                        max_data = df[col].astype(str).str.len().max() if not df[col].empty else 0
-                        max_header = len(str(col))
-                        base_w = max(max_data, max_header)
-                        
-                        # เช็คภาษาไทยเพื่อเพิ่มระยะขอบ
-                        sample_val = str(df[col].iloc[0]) if not df[col].empty else ""
-                        if any(ord(c) > 128 for c in sample_val):
-                            final_w = base_w * 1.25 # ปรับตัวคูณให้ชื่อสาขาไม่แน่นเกินไป
-                        else:
-                            final_w = base_w + 2
-                        
-                        worksheet.set_column(start_col + i, start_col + i, final_w)
+                # --- 🎯 แก้ปัญหา Column กว้างเพี้ยน: วัดจากข้อมูลจริง ---
+                def get_excel_width(df, col_name):
+                    # หาค่าที่ยาวที่สุดในคอลัมน์ (รวม Header)
+                    max_data = df[col_name].astype(str).map(len).max()
+                    max_header = len(str(col_name))
+                    # ใช้ค่าที่ยาวที่สุด และบวกเผื่อเล็กน้อยแค่ 2-3 unit สำหรับระยะขอบ
+                    return max(max_data, max_header) + 3
 
-                apply_final_autofit(width_ref_left, 0)
-                apply_final_autofit(right_summary, 10)
+                # ปรับความกว้างฝั่งซ้าย (0-7) อิงจากข้อมูลที่ยาวที่สุด
+                for i, col in enumerate(left_final.columns):
+                    w = get_excel_width(width_ref_left, col)
+                    # ถ้าเป็นภาษาไทย (รายการสินค้า/ชื่อสาขา) ให้เผื่อสระเพิ่มแค่เล็กน้อย (x1.2)
+                    if col in ['ชื่อสาขา', 'รายการสินค้า']:
+                        w = w * 1.2
+                    worksheet.set_column(i, i, w)
+                
+                # ปรับความกว้างฝั่งขวา (10-13)
+                for i, col in enumerate(right_summary.columns):
+                    w = get_excel_width(right_summary, col)
+                    if col in ['รายการสินค้า']:
+                        w = w * 1.2
+                    worksheet.set_column(i+10, i+10, w)
 
-        st.success("✅ เพิ่มชื่อสาขาและจัดเรียงข้อมูลตามโครงสร้างหลักเรียบร้อย!")
-        st.download_button(label="📥 ดาวน์โหลดไฟล์ Excel", data=output.getvalue(), file_name="Supplier_Split_Final_WithStore.xlsx")
+        st.success("✅ ปรับขนาดคอลัมน์ Auto-Fit อิงตามข้อมูลที่ยาวที่สุดเรียบร้อย!")
+        st.download_button(label="📥 ดาวน์โหลดไฟล์ Excel V6.5", data=output.getvalue(), file_name="Supplier_Report_Final.xlsx")
