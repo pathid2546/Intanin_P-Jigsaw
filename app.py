@@ -78,89 +78,122 @@ if uploaded_file:
     # --- TAB 2: ระบบใหม่ GENPrint DO (ใบส่งสินค้าชั่วคราว) ---
     with tab2:
         st.subheader("📑 ออกใบส่งสินค้าชั่วคราว (แยกตามสาขา)")
-    
-    required_cols = ['รหัสสาขา', 'Store Name', 'ที่อยู่', 'เลขที่ DO.', 'เลขที่ PO.', 'โซน', 'Cut Off Date', 'Delivery Date']
-    missing = [c for c in required_cols if c not in df_raw.columns]
-    
-    if missing:
-        st.error(f"❌ ไฟล์ของคุณขาดคอลัมน์: {', '.join(missing)}")
-    else:
-        # ลบแถวที่คอลัมน์สำคัญเป็นค่าว่างออกก่อนประมวลผล
-        df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
         
-        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (GENPrint DO)"):
-            if df_clean.empty:
-                st.warning("⚠️ ไม่พบข้อมูลรหัสสาขาในไฟล์")
-            else:
-                output_do = io.BytesIO()
-                with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
-                    workbook = writer.book
-                    
-                    # --- Styles (เหมือนเดิมเพื่อความเป๊ะของฟอร์ม) ---
-                    header_bold = workbook.add_format({'bold': True, 'font_size': 14})
-                    normal_font = workbook.add_format({'font_size': 11})
-                    total_row = workbook.add_format({'bold': True, 'border': 1, 'align': 'center'})
-                    table_header = workbook.add_format({'bold': True, 'border': 1, 'align': 'center'})
-                    table_cell = workbook.add_format({'border': 1, 'align': 'left'})
-                    num_cell = workbook.add_format({'border': 1, 'align': 'center'})
-                    footer_style = workbook.add_format({'border': 1, 'font_size': 10})
-
-                    # ดึงรหัสสาขาที่ไม่ซ้ำกัน
-                    unique_stores = df_clean['รหัสสาขา'].unique()
-
-                    for store_code in unique_stores:
-                        # กรองข้อมูลเฉพาะสาขานั้นๆ
-                        df_store = df_clean[df_clean['รหัสสาขา'] == store_code].copy()
+        # 1. ตรวจสอบคอลัมน์ที่จำเป็น (ต้องมีชื่อตรงกับ Raw Data)
+        required_cols = ['รหัสสาขา', 'Store Name', 'ที่อยู่', 'เลขที่ DO.', 'เลขที่ PO.', 'โซน', 'Cut Off Date', 'Delivery Date', 'รหัสสินค้า', 'รายการสินค้า', 'หน่วย', 'จำนวน']
+        missing = [c for c in required_cols if c not in df_raw.columns]
+        
+        if missing:
+            st.error(f"❌ ไฟล์ของคุณขาดคอลัมน์: {', '.join(missing)}")
+            st.info("กรุณาตรวจสอบว่าชื่อคอลัมน์ใน Excel สะกดตรงกับที่ระบุไว้ข้างบน")
+        else:
+            # 2. กรองแถวที่ว่างทิ้งไปก่อน (ป้องกัน IndexError จาก 40 rows ที่ว่าง)
+            df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
+            
+            if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (GENPrint DO)"):
+                if df_clean.empty:
+                    st.warning("⚠️ ไม่พบข้อมูลรหัสสาขาในไฟล์ (พบแต่แถวว่างเปล่า)")
+                else:
+                    output_do = io.BytesIO()
+                    with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
+                        workbook = writer.book
                         
-                        # ป้องกัน IndexError: ถ้ากรองแล้วมีข้อมูลค่อยทำต่อ
-                        if not df_store.empty:
-                            first_row = df_store.iloc[0]
-                            # ใช้รหัสสาขาเป็นชื่อ Sheet (จำกัด 31 ตัวอักษรตามกฎ Excel)
-                            sheet_name_do = str(store_code).strip()[:31]
+                        # --- การตั้งค่า Styles (ตามรูปแบบที่คุณชอบ) ---
+                        header_bold = workbook.add_format({'bold': True, 'font_size': 14})
+                        title_fmt = workbook.add_format({'bold': True, 'font_size': 18, 'align': 'center', 'valign': 'vcenter'})
+                        normal_font = workbook.add_format({'font_size': 11})
+                        bold_font = workbook.add_format({'bold': True, 'font_size': 11})
+                        
+                        table_header = workbook.add_format({'bold': True, 'border': 1, 'align': 'center', 'bg_color': '#FFFFFF'})
+                        table_cell = workbook.add_format({'border': 1, 'align': 'left'})
+                        num_cell = workbook.add_format({'border': 1, 'align': 'center'})
+                        
+                        total_row = workbook.add_format({'bold': True, 'border': 1, 'align': 'center', 'bg_color': '#F2F2F2'})
+                        footer_style = workbook.add_format({'border': 1, 'font_size': 10, 'valign': 'top'})
 
-                            worksheet = workbook.add_worksheet(sheet_name_do)
+                        # 3. วนลูปแยกใบตาม "รหัสสาขา" (Unique Stores)
+                        unique_stores = df_clean['รหัสสาขา'].unique()
+
+                        for store_code in unique_stores:
+                            df_store = df_clean[df_clean['รหัสสาขา'] == store_code].copy()
                             
-                            # --- ส่วนหัวและข้อมูล (ดึงตาม Logic ที่คุณเจาะจง) ---
-                            worksheet.write('A1', 'บริษัท โมบาย โลจิสติกส์ จำกัด', header_bold) #
-                            worksheet.write('A6', f'Store Code  {first_row["รหัสสาขา"]}', normal_font) #
-                            worksheet.write('A7', f'Store Name {first_row["Store Name"]}', normal_font) #
-                            worksheet.write('B8', first_row['ที่อยู่'], workbook.add_format({'text_wrap': True})) #
-                            
-                            # ฝั่งขวา
-                            worksheet.write('G1', f'Do. No. {first_row["เลขที่ DO."]}', normal_font)
-                            worksheet.write('G2', f'Ref. Po. {first_row["เลขที่ PO."]}', normal_font)
-                            worksheet.write('G6', f'Zone {first_row["โซน"]}', normal_font)
-                            worksheet.write('G7', f'Cutoff Date {first_row["Cut Off Date"]}', normal_font)
-                            worksheet.write('H8', first_row['Delivery Date'], workbook.add_format({'bold': True}))
+                            # เช็กเพื่อความชัวร์ก่อนใช้ .iloc[0]
+                            if not df_store.empty:
+                                first_row = df_store.iloc[0]
+                                # ใช้รหัสสาขาเป็นชื่อ Sheet (จำกัด 31 ตัวอักษร)
+                                sheet_name_do = str(store_code).strip()[:31]
+                                worksheet = workbook.add_worksheet(sheet_name_do)
+                                worksheet.set_zoom(85)
+                                
+                                # --- ส่วนหัวบริษัท (Fix ตายตัว) ---
+                                worksheet.write('A1', 'บริษัท โมบาย โลจิสติกส์ จำกัด', header_bold)
+                                worksheet.write('A2', '279 หมู่ที่ 9 ตำบลบางโฉลง', normal_font)
+                                worksheet.write('A3', 'อำเภอบางพลี จังหวัดสมุทรปราการ 10540', normal_font)
+                                worksheet.write('A4', 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', normal_font)
+                                worksheet.merge_range('E2:G3', 'ใบส่งสินค้าชั่วคราว', title_fmt)
 
-                            # --- ตารางสินค้า (Body) ---
-                            headers = ['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']
-                            for col_num, header in enumerate(headers):
-                                worksheet.write(9, col_num, header, table_header)
+                                # --- ฝั่งซ้าย: ข้อมูลลูกค้า (Store Code / Name / Ship To) ---
+                                worksheet.write('A5', 'Customer Name', normal_font)
+                                worksheet.write('A6', f'Store Code  {first_row["รหัสสาขา"]}', normal_font)
+                                worksheet.write('A7', f'Store Name {first_row["Store Name"]}', normal_font)
+                                worksheet.write('A8', 'Ship To', normal_font)
+                                # เขียนที่อยู่ (Wrap Text กรณีที่อยู่ยาว)
+                                worksheet.write('B8', first_row['ที่อยู่'], workbook.add_format({'text_wrap': True, 'font_size': 10}))
 
-                            row_idx = 10
-                            for i, (_, row) in enumerate(df_store.iterrows(), 1):
-                                worksheet.write(row_idx, 0, i, num_cell)
-                                worksheet.write(row_idx, 1, row['รหัสสินค้า'], num_cell)
-                                worksheet.write(row_idx, 2, row['รายการสินค้า'], table_cell)
-                                worksheet.write(row_idx, 3, row['หน่วย'], table_cell)
-                                worksheet.write(row_idx, 4, row['จำนวน'], num_cell)
-                                row_idx += 1
+                                # --- ฝั่งขวา: ข้อมูลเอกสาร (Do / Po / Zone / Dates) ---
+                                worksheet.write('G1', f'Do. No. {first_row["เลขที่ DO."]}', normal_font)
+                                worksheet.write('G2', f'Ref. Po. {first_row["เลขที่ PO."]}', normal_font)
+                                worksheet.write('G3', 'Ref. Po. -', normal_font) # Fixed
+                                worksheet.write('G4', 'Ref. Po. -', normal_font) # Fixed
+                                worksheet.write('G5', 'Ref. Po. -', normal_font) # Fixed
+                                worksheet.write('G6', f'Zone {first_row["โซน"]}', normal_font)
+                                worksheet.write('G7', f'Cutoff Date {first_row["Cut Off Date"]}', normal_font)
+                                worksheet.write('G8', 'Delivery Date', bold_font)
+                                worksheet.write('H8', first_row['Delivery Date'], bold_font)
 
-                            # --- ส่วนท้าย (Footer) ---
-                            worksheet.merge_range(row_idx, 0, row_idx, 3, 'Total', total_row)
-                            worksheet.write(row_idx, 4, df_store['จำนวน'].sum(), total_row)
-                            
-                            # ตารางเซ็นชื่อ 3 ช่อง
-                            f_row = row_idx + 1
-                            f_headers = ['ผู้รับสินค้า', 'ผู้ส่งสินค้า / ทะเบียนรถ', 'คลังสินค้า']
-                            for i, head in enumerate(f_headers):
-                                c_start = i * 2
-                                worksheet.merge_range(f_row, c_start, f_row, c_start+1, head, total_row)
-                                worksheet.merge_range(f_row+1, c_start, f_row+1, c_start+1, 'ชื่อ (ตัวบรรจง)', footer_style)
-                                worksheet.merge_range(f_row+2, c_start, f_row+2, c_start+1, 'วันที่', footer_style)
-                                worksheet.merge_range(f_row+3, c_start, f_row+3, c_start+1, 'เวลา', footer_style)
-                                worksheet.merge_range(f_row+4, c_start, f_row+4, c_start+1, 'หมายเหตุ', footer_style)
+                                # --- ตารางสินค้า (Body) ---
+                                headers = ['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']
+                                for col_num, header in enumerate(headers):
+                                    worksheet.write(9, col_num, header, table_header)
 
-                st.success("✅ แก้ไขและสร้างไฟล์ DO เรียบร้อย!")
-                st.download_button(label="📥 ดาวน์โหลดไฟล์ GENPrint DO (Fixed)", data=output_do.getvalue(), file_name="GENPrint_DO_Fixed.xlsx")
+                                row_idx = 10
+                                for i, (_, row_data) in enumerate(df_store.iterrows(), 1):
+                                    worksheet.write(row_idx, 0, i, num_cell)
+                                    worksheet.write(row_idx, 1, row_data['รหัสสินค้า'], num_cell)
+                                    worksheet.write(row_idx, 2, row_data['รายการสินค้า'], table_cell)
+                                    worksheet.write(row_idx, 3, row_data['หน่วย'], table_cell)
+                                    worksheet.write(row_idx, 4, row_data['จำนวน'], num_cell)
+                                    row_idx += 1
+
+                                # --- ส่วนท้าย (Footer) ---
+                                # บรรทัด Total
+                                worksheet.merge_range(row_idx, 0, row_idx, 3, 'Total', total_row)
+                                worksheet.write(row_idx, 4, df_store['จำนวน'].sum(), total_row)
+                                
+                                # ตารางเซ็นชื่อ 3 ช่อง (Fix ตามรูป)
+                                f_row = row_idx + 1
+                                f_headers = ['ผู้รับสินค้า', 'ผู้ส่งสินค้า / ทะเบียนรถ', 'คลังสินค้า']
+                                for i, head in enumerate(f_headers):
+                                    c_start = i * 2
+                                    # เขียนหัวกล่องเซ็นชื่อ
+                                    worksheet.merge_range(f_row, c_start, f_row, c_start+1, head, total_row)
+                                    # สร้างช่องกรอกรายละเอียด (สูง 4 บรรทัด)
+                                    worksheet.merge_range(f_row+1, c_start, f_row+1, c_start+1, 'ชื่อ (ตัวบรรจง)', footer_style)
+                                    worksheet.merge_range(f_row+2, c_start, f_row+2, c_start+1, 'วันที่', footer_style)
+                                    worksheet.merge_range(f_row+3, c_start, f_row+3, c_start+1, 'เวลา', footer_style)
+                                    worksheet.merge_range(f_row+4, c_start, f_row+4, c_start+1, 'หมายเหตุ', footer_style)
+                                    
+                                    # ปรับความสูงของแถว Footer ให้มีที่ว่างเซ็นชื่อ
+                                    worksheet.set_row(f_row+1, 25)
+                                    worksheet.set_row(f_row+2, 20)
+
+                                # ปรับขนาดคอลัมน์ให้เหมาะสม
+                                worksheet.set_column('A:A', 5)   # No.
+                                worksheet.set_column('B:B', 15)  # Code
+                                worksheet.set_column('C:C', 45)  # Name
+                                worksheet.set_column('D:D', 10)  # Unit
+                                worksheet.set_column('E:E', 8)   # QTY
+                                worksheet.set_column('G:H', 18)  # ฝั่งขวา
+
+                    st.success("✅ สร้างไฟล์ใบส่งสินค้า (GENPrint DO) สำเร็จ!")
+                    st.download_button(label="📥 ดาวน์โหลดไฟล์ GENPrint DO", data=output_do.getvalue(), file_name="DO_Forms_Ready.xlsx")
