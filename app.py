@@ -75,24 +75,24 @@ if uploaded_file:
             st.success("✅ สร้างไฟล์แยกซัพพลายเออร์เรียบร้อย!")
             st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output.getvalue(), file_name="Supplier_Splitter_V7.xlsx")
 
-# --- TAB 2: ระบบ GENPrint DO (ฉบับแก้ไขตำแหน่ง Title ให้ตรงต้นฉบับ) ---
+# --- TAB 2: ระบบ GENPrint DO (ฉบับวาง Title ที่ C2 ช่องเดียว) ---
     with tab2:
-        st.subheader("📑 ออกใบส่งสินค้า (A4 - Fixed Title Position)")
+        st.subheader("📑 ออกใบส่งสินค้า (A4 - Title at C2 Only)")
         
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
         
-        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (Correct Layout)"):
+        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (C2 Layout)"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
                 
-                # --- กำหนด Styles ---
+                # --- Styles ---
                 comp_name_fmt = workbook.add_format({'bold': True, 'font_size': 13})
-                doc_title_fmt = workbook.add_format({'bold': True, 'font_size': 18, 'align': 'center', 'valign': 'vcenter'})
+                # ปรับ doc_title_fmt ให้จัดวางกึ่งกลางแค่ในเซลล์เดียว
+                doc_title_fmt = workbook.add_format({'bold': True, 'font_size': 18, 'align': 'center', 'valign': 'top'})
+                
                 std_left = workbook.add_format({'font_size': 10, 'align': 'left'})
                 std_right = workbook.add_format({'font_size': 10, 'align': 'right'})
-                
-                # Format วันที่
                 date_norm_fmt = workbook.add_format({'num_format': 'dd/mm/yyyy', 'font_size': 10, 'align': 'right'})
                 date_bold_fmt = workbook.add_format({'bold': True, 'num_format': 'dd/mm/yyyy', 'font_size': 11, 'align': 'right'})
                 
@@ -109,47 +109,47 @@ if uploaded_file:
                     sheet_name = str(store_code).strip()[:31]
                     worksheet = workbook.add_worksheet(sheet_name)
                     
-                    # ตั้งค่าหน้ากระดาษ A4
+                    # Page Setup A4
                     worksheet.set_paper(9) 
                     worksheet.set_margins(0.3, 0.3, 0.3, 0.3)
                     worksheet.fit_to_pages(1, 0)
                     
-                    # กำหนดความกว้างคอลัมน์มาตรฐาน (ไม่ขยายเพิ่ม)
+                    # Column Widths
                     worksheet.set_column('A:A', 5)   # No.
                     worksheet.set_column('B:B', 14)  # Product Code
-                    worksheet.set_column('C:C', 45)  # Product Name
-                    worksheet.set_column('D:D', 12)  # Unit/UOM
+                    worksheet.set_column('C:C', 45)  # Product Name (แกนกลาง)
+                    worksheet.set_column('D:D', 12)  # Unit
                     worksheet.set_column('E:E', 15)  # QTY & Right Info
 
-                    # --- [SECTION 1: HEADER - เน้นตำแหน่ง Title] ---
-                    # ฝั่งซ้าย: บริษัท
+                    # --- HEADER SECTION ---
+                    # ฝั่งซ้าย
                     worksheet.write('A1', 'บริษัท โมบาย โลจิสติกส์ จำกัด', comp_name_fmt)
                     worksheet.write('A2', '279 หมู่ที่ 9 ตำบลบางโฉลง', std_left)
                     worksheet.write('A3', 'อำเภอบางพลี จังหวัดสมุทรปราการ 10540', std_left)
                     worksheet.write('A4', 'ติดต่อ/สอบถาม : Tel : 099-157-3114', std_left)
 
-                    # ตรงกลาง: Title อยู่ที่ C2:C4 เท่านั้น (เพื่อให้ตรงกับแกนกลางต้นฉบับ)
-                    worksheet.merge_range('C2:C4', 'ใบส่งสินค้าชั่วคราว', doc_title_fmt)
+                    # ตรงกลาง: วางที่ C2 ช่องเดียวตามสั่ง (ไม่ Merge)
+                    worksheet.write('C2', 'ใบส่งสินค้าชั่วคราว', doc_title_fmt)
 
-                    # ฝั่งขวา: ข้อมูลเอกสาร
+                    # ฝั่งขวา
                     worksheet.write('E1', f'Do. No. {first_row["เลขที่ DO."]}', std_right)
                     worksheet.write('E2', f'Ref. Po. {first_row["เลขที่ PO."]}', std_right)
                     worksheet.write('E3', 'Ref. Po. -', std_right)
                     worksheet.write('E4', f'Zone {first_row["โซน"]}', std_right)
                     worksheet.write('E5', f'Cutoff Date {first_row["Cut Off Date"]}', date_norm_fmt)
                     
-                    # วันที่ส่งของ (จัดให้ตรงตำแหน่งต้นฉบับที่ D8-E8)
-                    worksheet.write('D8', 'Delivery Date', workbook.add_format({'bold': True, 'align': 'right'}))
+                    delivery_lbl = workbook.add_format({'bold': True, 'align': 'right', 'font_size': 11})
+                    worksheet.write('D8', 'Delivery Date', delivery_lbl)
                     worksheet.write('E8', first_row['Delivery Date'], date_bold_fmt)
 
-                    # --- [SECTION 2: CUSTOMER INFO] ---
+                    # --- CUSTOMER SECTION ---
                     worksheet.write('A5', 'Customer Name', std_left)
                     worksheet.write('A6', f'Store Code: {first_row["รหัสสาขา"]}', std_left)
                     worksheet.write('A7', f'Store Name: {first_row["Store Name"]}', std_left)
                     worksheet.write('A8', 'Ship To:', std_left)
                     worksheet.merge_range('B8:C9', first_row['ที่อยู่'], footer_box)
 
-                    # --- [SECTION 3: TABLE] ---
+                    # --- TABLE SECTION ---
                     headers = ['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']
                     for col_num, head in enumerate(headers):
                         worksheet.write(10, col_num, head, table_head)
@@ -163,12 +163,12 @@ if uploaded_file:
                         worksheet.write(row_idx, 4, r['จำนวน'], border_center)
                         row_idx += 1
 
-                    # --- [SECTION 4: FOOTER] ---
+                    # --- FOOTER SECTION ---
                     worksheet.merge_range(row_idx, 0, row_idx, 3, 'Total', workbook.add_format({'bold': True, 'border': 1, 'align': 'center'}))
                     worksheet.write(row_idx, 4, df_store['จำนวน'].sum(), border_center)
                     
                     f_row = row_idx + 1
-                    worksheet.set_row(f_row+1, 70) # ความสูงช่องเซ็นชื่อ
+                    worksheet.set_row(f_row+1, 70) 
                     
                     worksheet.merge_range(f_row, 0, f_row, 1, 'ผู้รับสินค้า', table_head)
                     worksheet.merge_range(f_row+1, 0, f_row+1, 1, 'ชื่อ (ตัวบรรจง)\nวันที่\nเวลา\nหมายเหตุ', footer_box)
@@ -179,5 +179,5 @@ if uploaded_file:
                     worksheet.write(f_row, 4, 'คลังสินค้า', table_head)
                     worksheet.write(f_row+1, 4, 'ชื่อ:\nวันที่:', footer_box)
 
-            st.success("✅ สร้างไฟล์ใบส่งสินค้าที่มีตำแหน่ง Title ถูกต้องตามต้นฉบับแล้ว!")
-            st.download_button("📥 ดาวน์โหลดไฟล์ DO", output_do.getvalue(), "DO_Final_A4.xlsx")
+            st.success("✅ แก้ไขตำแหน่ง Title ไปที่ C2 เรียบร้อยแล้ว!")
+            st.download_button("📥 ดาวน์โหลดไฟล์ DO", output_do.getvalue(), "DO_C2_Layout.xlsx")
