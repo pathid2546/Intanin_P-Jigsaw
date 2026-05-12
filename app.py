@@ -75,9 +75,9 @@ if uploaded_file:
             st.success("✅ สร้างไฟล์แยกซัพพลายเออร์เรียบร้อย!")
             st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output.getvalue(), file_name="Supplier_Splitter_V7.xlsx")
 
-# --- TAB 2: ระบบ GENPrint DO (A4 Layout & Auto Page Break) ---
+# --- TAB 2: ระบบ GENPrint DO (A4 - Merge Cells Format) ---
     with tab2:
-        st.subheader("📑 ออกใบส่งสินค้าชั่วคราว (A4 Size - 1 สาขาต่อ 1 แผ่น)")
+        st.subheader("📑 ออกใบส่งสินค้า (A4 Format - 5 Columns)")
         
         required_cols = [
             'รหัสสาขา', 'Store Name', 'ที่อยู่', 'เลขที่ DO.', 'เลขที่ PO.', 
@@ -92,113 +92,109 @@ if uploaded_file:
             # กรองแถวว่าง (ป้องกัน IndexError)
             df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
             
-            if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (A4 Format)"):
-                if df_clean.empty:
-                    st.warning("⚠️ ไม่พบข้อมูลในไฟล์")
-                else:
-                    output_do = io.BytesIO()
-                    # ใช้ xlsxwriter เพื่อจัดการ Page Setup
-                    with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
-                        workbook = writer.book
+            if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (Merge Cells Layout)"):
+                output_do = io.BytesIO()
+                with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
+                    workbook = writer.book
+                    
+                    # --- กำหนด Styles ให้ตรงต้นฉบับ ---
+                    head_comp = workbook.add_format({'bold': True, 'font_size': 14})
+                    title_fmt = workbook.add_format({'bold': True, 'font_size': 18, 'align': 'center', 'valign': 'vcenter'})
+                    normal_left = workbook.add_format({'font_size': 11, 'align': 'left'})
+                    normal_right = workbook.add_format({'font_size': 11, 'align': 'right'})
+                    
+                    # Date Formats
+                    date_bold = workbook.add_format({'bold': True, 'num_format': 'dd/mm/yyyy', 'font_size': 11, 'align': 'right'})
+                    date_norm = workbook.add_format({'num_format': 'dd/mm/yyyy', 'font_size': 11, 'align': 'right'})
+                    
+                    table_head = workbook.add_format({'border': 1, 'align': 'center', 'bold': True})
+                    cell_border = workbook.add_format({'border': 1})
+                    cell_center = workbook.add_format({'border': 1, 'align': 'center'})
+                    
+                    total_fmt = workbook.add_format({'bold': True, 'border': 1, 'align': 'center', 'bg_color': '#F2F2F2'})
+                    footer_box = workbook.add_format({'border': 1, 'font_size': 10, 'valign': 'top'})
+
+                    # วนลูปแยกสาขา
+                    for store_code in df_clean['รหัสสาขา'].unique():
+                        df_store = df_clean[df_clean['รหัสสาขา'] == store_code].copy()
+                        if df_store.empty: continue
                         
-                        # --- การตั้งค่า Styles (เหมือนเดิม) ---
-                        header_bold = workbook.add_format({'bold': True, 'font_size': 14})
-                        title_fmt = workbook.add_format({'bold': True, 'font_size': 18, 'align': 'center'})
-                        normal_font = workbook.add_format({'font_size': 11})
-                        date_fmt = workbook.add_format({'bold': True, 'num_format': 'dd/mm/yyyy', 'font_size': 11})
-                        date_normal_fmt = workbook.add_format({'num_format': 'dd/mm/yyyy', 'font_size': 11})
+                        first_row = df_store.iloc[0]
+                        sheet_name = str(store_code).strip()[:31]
+                        worksheet = workbook.add_worksheet(sheet_name)
                         
-                        table_header = workbook.add_format({'bold': True, 'border': 1, 'align': 'center', 'bg_color': '#FFFFFF'})
-                        table_cell = workbook.add_format({'border': 1, 'align': 'left'})
-                        num_cell = workbook.add_format({'border': 1, 'align': 'center'})
+                        # --- ตั้งค่าหน้ากระดาษ A4 ---
+                        worksheet.set_paper(9) # A4
+                        worksheet.set_margins(0.3, 0.3, 0.3, 0.3)
+                        worksheet.fit_to_pages(1, 0)
                         
-                        total_row = workbook.add_format({'bold': True, 'border': 1, 'align': 'center', 'bg_color': '#F2F2F2'})
-                        footer_style = workbook.add_format({'border': 1, 'font_size': 10, 'valign': 'top'})
+                        # กำหนดความกว้าง 5 คอลัมน์ (A-E)
+                        worksheet.set_column('A:A', 6)   # No.
+                        worksheet.set_column('B:B', 15)  # Product Code
+                        worksheet.set_column('C:C', 45)  # Product Name
+                        worksheet.set_column('D:D', 15)  # Unit/UOM
+                        worksheet.set_column('E:E', 10)  # QTY
 
-                        # วนลูปแยกใบตามรหัสสาขา
-                        unique_stores = df_clean['รหัสสาขา'].unique()
+                        # --- Header: Merge Cells ตามรูปต้นฉบับ ---
+                        worksheet.merge_range('A1:C1', 'บริษัท โมบาย โลจิสติกส์ จำกัด', head_comp)
+                        worksheet.merge_range('A2:C2', '279 หมู่ที่ 9 ตำบลบางโฉลง', normal_left)
+                        worksheet.merge_range('A3:C3', 'อำเภอบางพลี จังหวัดสมุทรปราการ 10540', normal_left)
+                        worksheet.merge_range('A4:C4', 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', normal_left)
+                        
+                        # หัวเรื่องตรงกลาง
+                        worksheet.merge_range('C2:D4', 'ใบส่งสินค้าชั่วคราว', title_fmt)
+                        
+                        # ข้อมูลฝั่งขวา (คอลัมน์ E)
+                        worksheet.write('E1', f'Do. No. {first_row["เลขที่ DO."]}', normal_right)
+                        worksheet.write('E2', f'Ref. Po. {first_row["เลขที่ PO."]}', normal_right)
+                        worksheet.write('E3', 'Ref. Po. -', normal_right)
+                        worksheet.write('E4', 'Ref. Po. -', normal_right)
+                        worksheet.write('E5', 'Ref. Po. -', normal_right)
+                        worksheet.write('E6', f'Zone {first_row["โซน"]}', normal_right)
+                        worksheet.write('E7', f'Cutoff Date {first_row["Cut Off Date"]}', date_norm)
+                        worksheet.write('D8', 'Delivery Date', workbook.add_format({'bold': True, 'align': 'right'}))
+                        worksheet.write('E8', first_row['Delivery Date'], date_bold)
 
-                        for store_code in unique_stores:
-                            df_store = df_clean[df_clean['รหัสสาขา'] == store_code].copy()
-                            
-                            if not df_store.empty:
-                                first_row = df_store.iloc[0]
-                                sheet_name_do = str(store_code).strip()[:31]
-                                worksheet = workbook.add_worksheet(sheet_name_do)
-                                
-                                # ==========================================
-                                # 🛠 ส่วนสำคัญ: ตั้งค่าหน้ากระดาษ A4
-                                # ==========================================
-                                worksheet.set_paper(9)  # 9 คือรหัสของกระดาษ A4
-                                worksheet.set_portrait() # แนวตั้ง
-                                worksheet.set_margins(left=0.5, right=0.5, top=0.5, bottom=0.5) # ขอบกระดาษเล็กน้อย
-                                worksheet.fit_to_pages(1, 0) # บีบหน้ากว้างให้พอดี 1 หน้า (ความยาวปล่อยไหล)
-                                worksheet.set_print_scale(90) # ปรับสเกลเล็กน้อยให้สวยงาม
+                        # ข้อมูลฝั่งซ้าย
+                        worksheet.write('A5', 'Customer Name', normal_left)
+                        worksheet.merge_range('A6:C6', f'Store Code  {first_row["รหัสสาขา"]}', normal_left)
+                        worksheet.merge_range('A7:C7', f'Store Name {first_row["Store Name"]}', normal_left)
+                        worksheet.write('A8', 'Ship To', normal_left)
+                        worksheet.merge_range('B8:C9', first_row['ที่อยู่'], workbook.add_format({'text_wrap': True, 'font_size': 10}))
 
-                                # --- Header บริษัท ---
-                                worksheet.write('A1', 'บริษัท โมบาย โลจิสติกส์ จำกัด', header_bold)
-                                worksheet.write('A2', '279 หมู่ที่ 9 ตำบลบางโฉลง', normal_font)
-                                worksheet.write('A3', 'อำเภอบางพลี จังหวัดสมุทรปราการ 10540', normal_font)
-                                worksheet.write('A4', 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', normal_font)
-                                worksheet.merge_range('E2:G3', 'ใบส่งสินค้าชั่วคราว', title_fmt)
+                        # --- Table Body (5 Columns) ---
+                        cols = ['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']
+                        for c_idx, val in enumerate(cols):
+                            worksheet.write(9, c_idx, val, table_head)
 
-                                # --- ข้อมูลลูกค้า & เอกสาร ---
-                                worksheet.write('A5', 'Customer Name', normal_font)
-                                worksheet.write('A6', f'Store Code  {first_row["รหัสสาขา"]}', normal_font)
-                                worksheet.write('A7', f'Store Name {first_row["Store Name"]}', normal_font)
-                                worksheet.write('A8', 'Ship To', normal_font)
-                                worksheet.write('B8', first_row['ที่อยู่'], workbook.add_format({'text_wrap': True, 'font_size': 10}))
+                        r_idx = 10
+                        for i, (_, row) in enumerate(df_store.iterrows(), 1):
+                            worksheet.write(r_idx, 0, i, cell_center)
+                            worksheet.write(r_idx, 1, row['รหัสสินค้า'], cell_center)
+                            worksheet.write(r_idx, 2, row['รายการสินค้า'], cell_border)
+                            worksheet.write(r_idx, 3, row['หน่วย'], cell_border)
+                            worksheet.write(r_idx, 4, row['จำนวน'], cell_center)
+                            r_idx += 1
 
-                                worksheet.write('G1', f'Do. No. {first_row["เลขที่ DO."]}', normal_font)
-                                worksheet.write('G2', f'Ref. Po. {first_row["เลขที่ PO."]}', normal_font)
-                                worksheet.write('G3', 'Ref. Po. -', normal_font)
-                                worksheet.write('G4', 'Ref. Po. -', normal_font)
-                                worksheet.write('G5', 'Ref. Po. -', normal_font)
-                                worksheet.write('G6', f'Zone {first_row["โซน"]}', normal_font)
-                                
-                                worksheet.write('G7', 'Cutoff Date', normal_font)
-                                worksheet.write('H7', first_row['Cut Off Date'], date_normal_fmt) #
-                                
-                                worksheet.write('G8', 'Delivery Date', date_fmt)
-                                worksheet.write('H8', first_row['Delivery Date'], date_fmt) #
+                        # --- Footer: Merge Cells ตามต้นฉบับ ---
+                        # รวมจำนวน
+                        worksheet.merge_range(r_idx, 0, r_idx, 3, 'Total', total_fmt)
+                        worksheet.write(r_idx, 4, df_store['จำนวน'].sum(), total_fmt)
+                        
+                        # กล่องเซ็นชื่อ 3 ช่อง (แบ่งคอลัมน์ A-B, C-D, E)
+                        f_row = r_idx + 1
+                        # ช่อง 1 (A-B)
+                        worksheet.merge_range(f_row, 0, f_row, 1, 'ผู้รับสินค้า', table_head)
+                        worksheet.merge_range(f_row+1, 0, f_row+4, 1, 'ชื่อ (ตัวบรรจง)\nวันที่\nเวลา\nหมายเหตุ', footer_box)
+                        # ช่อง 2 (C-D)
+                        worksheet.merge_range(f_row, 2, f_row, 3, 'ผู้ส่งสินค้า / ทะเบียนรถ', table_head)
+                        worksheet.merge_range(f_row+1, 2, f_row+4, 3, 'ชื่อ (ตัวบรรจง)\nวันที่\nเวลา\nหมายเหตุ', footer_box)
+                        # ช่อง 3 (E)
+                        worksheet.write(f_row, 4, 'คลังสินค้า', table_head)
+                        worksheet.write_rich_string(f_row+1, 4, 'ชื่อ (ตัวบรรจง)\nวันที่\nเวลา\nหมายเหตุ', footer_box)
+                        
+                        # ปรับความสูงแถวเซ็นชื่อให้กว้างขึ้น
+                        worksheet.set_row(f_row+1, 60)
 
-                                # --- ตารางสินค้า ---
-                                headers = ['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']
-                                for col_num, header in enumerate(headers):
-                                    worksheet.write(9, col_num, header, table_header)
-
-                                row_idx = 10
-                                for i, (_, r) in enumerate(df_store.iterrows(), 1):
-                                    worksheet.write(row_idx, 0, i, num_cell)
-                                    worksheet.write(row_idx, 1, r['รหัสสินค้า'], num_cell)
-                                    worksheet.write(row_idx, 2, r['รายการสินค้า'], table_cell)
-                                    worksheet.write(row_idx, 3, r['หน่วย'], table_cell)
-                                    worksheet.write(row_idx, 4, r['จำนวน'], num_cell)
-                                    row_idx += 1
-
-                                # --- ส่วนท้าย & ช่องเซ็นชื่อ ---
-                                worksheet.merge_range(row_idx, 0, row_idx, 3, 'Total', total_row)
-                                worksheet.write(row_idx, 4, df_store['จำนวน'].sum(), total_row)
-                                
-                                f_row = row_idx + 1
-                                f_headers = ['ผู้รับสินค้า', 'ผู้ส่งสินค้า / ทะเบียนรถ', 'คลังสินค้า']
-                                for i, head in enumerate(f_headers):
-                                    c_start = i * 2
-                                    worksheet.merge_range(f_row, c_start, f_row, c_start+1, head, total_row)
-                                    worksheet.merge_range(f_row+1, c_start, f_row+1, c_start+1, 'ชื่อ (ตัวบรรจง)', footer_style)
-                                    worksheet.merge_range(f_row+2, c_start, f_row+2, c_start+1, 'วันที่', footer_style)
-                                    worksheet.merge_range(f_row+3, c_start, f_row+3, c_start+1, 'เวลา', footer_style)
-                                    worksheet.merge_range(f_row+4, c_start, f_row+4, c_start+1, 'หมายเหตุ', footer_style)
-                                    worksheet.set_row(f_row+1, 22)
-
-                                # ปรับความกว้างคอลัมน์ให้พอดี A4
-                                worksheet.set_column('A:A', 4)   # No
-                                worksheet.set_column('B:B', 14)  # Product Code
-                                worksheet.set_column('C:C', 42)  # Product Name
-                                worksheet.set_column('D:D', 12)  # Unit
-                                worksheet.set_column('E:E', 7)   # Qty
-                                worksheet.set_column('F:F', 2)   # ช่องว่าง
-                                worksheet.set_column('G:H', 18)  # ฝั่งวันที่
-
-                    st.success("✅ สร้างไฟล์ใบส่งสินค้า A4 เรียบร้อย! (แยก 1 สาขาต่อ 1 แผ่น)")
-                    st.download_button(label="📥 ดาวน์โหลดไฟล์ DO สำหรับพิมพ์ (A4)", data=output_do.getvalue(), file_name="DO_Print_A4.xlsx")
+                st.success("✅ แก้ไขฟอร์มเป็น 5 คอลัมน์ และ Merge Cells เรียบร้อย!")
+                st.download_button("📥 ดาวน์โหลดไฟล์ DO (A4 Standard)", output_do.getvalue(), "DO_Standard_A4.xlsx")
