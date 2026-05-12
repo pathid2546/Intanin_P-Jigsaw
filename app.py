@@ -75,87 +75,77 @@ if uploaded_file:
 
             st.success("✅ สร้างไฟล์แยกซัพพลายเออร์เรียบร้อย!")
             st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output.getvalue(), file_name="Supplier_Splitter_V7.xlsx")
-# --- TAB 2: ระบบ GENPrint DO (ฉบับสมบูรณ์ - แม่นยำสูง) ---
+# --- TAB 2: ระบบ GENPrint DO (ปรับปรุงการตัดหน้าให้แม่นยำ) ---
     with tab2:
         st.subheader("📑 ออกใบส่งสินค้า (Single Sheet - Precision Layout)")
         
-        # กรองเฉพาะแถวที่มีรหัสสาขาเพื่อป้องกันข้อมูลขยะ
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
         
         if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (ฉบับพิมพ์ต่อเนื่อง)"):
             output_do = io.BytesIO()
-            # ใช้ xlsxwriter เพื่อควบคุม Page Break และ Layout ให้เป๊ะที่สุด
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
                 worksheet = workbook.add_worksheet("DO_Continuous")
                 
-                # --- [1. การกำหนด Styles] ---
+                # --- [1. การกำหนด Styles] (ใช้ตามเดิม) ---
                 f_title = workbook.add_format({'bold': True, 'font_size': 18, 'align': 'center'})
                 f_header_bold = workbook.add_format({'bold': True, 'font_size': 11})
                 f_std = workbook.add_format({'font_size': 10})
                 f_right = workbook.add_format({'font_size': 10, 'align': 'right'})
-                
                 f_table_head = workbook.add_format({'border': 1, 'align': 'center', 'bold': True, 'bg_color': '#F2F2F2', 'font_size': 10})
-                f_border = workbook.add_format({'border': 1, 'font_size': 10})
                 f_border_center = workbook.add_format({'border': 1, 'align': 'center', 'font_size': 10})
                 f_wrap = workbook.add_format({'border': 1, 'text_wrap': True, 'font_size': 10})
-                
                 f_ship_to = workbook.add_format({'font_size': 10, 'text_wrap': True, 'valign': 'top', 'align': 'left'})
                 f_delivery = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'right'})
                 f_date_val = workbook.add_format({'bold': True, 'font_size': 11, 'num_format': 'dd/mm/yyyy', 'align': 'right'})
-                
                 f_footer_box = workbook.add_format({'border': 1, 'font_size': 9, 'valign': 'top', 'text_wrap': True})
 
-                # --- [2. ตั้งค่าหน้ากระดาษ A4 และความกว้างคอลัมน์] ---
+                # --- [2. ตั้งค่าหน้ากระดาษ A4] ---
                 worksheet.set_paper(9) # A4
                 worksheet.set_margins(0.3, 0.3, 0.3, 0.3)
-                worksheet.set_column('A:A', 5)   # No.
-                worksheet.set_column('B:B', 14)  # Product Code
-                worksheet.set_column('C:C', 45)  # Product Name (แกนกลาง)
-                worksheet.set_column('D:D', 12)  # Unit
-                worksheet.set_column('E:E', 15)  # QTY & Right Info
+                worksheet.set_column('A:A', 5)
+                worksheet.set_column('B:B', 14)
+                worksheet.set_column('C:C', 45)
+                worksheet.set_column('D:D', 12)
+                worksheet.set_column('E:E', 15)
                 
-                curr = 0 # ตัวนับแถวปัจจุบัน (Row Cursor)
-                page_breaks = [] # เก็บตำแหน่งตัดหน้าพิมพ์
+                curr = 0 
+                page_breaks = []
+                # เพิ่มตัวนับจำนวน DO เพื่อเช็คการตัดหน้าตั้งแต่หน้าแรก
+                do_count = 0 
 
                 for store_code in df_clean['รหัสสาขา'].unique():
                     df_store = df_clean[df_clean['รหัสสาขา'] == store_code].copy()
                     if df_store.empty: continue
                     
-                    first_row = df_store.iloc[0]
-
                     # --- [3. ระบบตรวจสอบการขึ้นหน้าใหม่] ---
-                    # ถ้าขึ้น DO ใหม่แล้วจะเกินบรรทัดที่ 40 ให้สั่งตัดหน้า (Page Break)
-                    if curr > 38:
+                    # ถ้าไม่ใช่ DO แรก และตำแหน่ง curr เริ่มสูง ให้บันทึกจุดตัดหน้า
+                    if do_count > 0:
                         page_breaks.append(curr)
-                        # หมายเหตุ: เราไม่ reset curr เป็น 0 เพราะต้องการให้ไหลต่อเนื่องใน Sheet เดียว
+                    
+                    first_row = df_store.iloc[0]
                     
                     # --- [4. เขียนส่วนหัว (Header)] ---
                     worksheet.write(curr, 0, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_header_bold)
                     worksheet.write(curr + 1, 0, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
                     worksheet.write(curr + 2, 0, 'จังหวัดสมุทรปราการ 10540', f_std)
                     worksheet.write(curr + 3, 0, 'ติดต่อ/สอบถาม : Tel : 099-157-3114', f_std)
-
-                    # Title อยู่ที่ C2 (ของ DO นั้นๆ)
                     worksheet.write(curr + 1, 2, 'ใบส่งสินค้าชั่วคราว', f_title)
 
-                    # ข้อมูลฝั่งขวา (คอลัมน์ E)
                     worksheet.write(curr, 4, f'Do. No. {first_row["เลขที่ DO."]}', f_right)
                     worksheet.write(curr + 1, 4, f'Ref. Po. {first_row["เลขที่ PO."]}', f_right)
                     worksheet.write(curr + 3, 4, f'Zone {first_row["โซน"]}', f_right)
                     
-                    # Delivery Date (ตำแหน่ง D8:E8)
                     worksheet.write(curr + 7, 3, 'Delivery Date', f_delivery)
                     worksheet.write(curr + 7, 4, first_row['Delivery Date'], f_date_val)
 
-                    # --- [5. ข้อมูลสาขา และ Ship To (B:C Merge)] ---
+                    # --- [5. ข้อมูลสาขา และ Ship To] ---
                     worksheet.write(curr + 5, 0, f'Store Code: {store_code}', f_header_bold)
                     worksheet.write(curr + 6, 0, f'Store Name: {first_row["Store Name"]}', f_header_bold)
                     worksheet.write(curr + 7, 0, 'Ship To:', f_std)
-                    # Merge B และ C สำหรับที่อยู่ (ไม่มีเส้นขอบ Stroke)
                     worksheet.merge_range(curr + 7, 1, curr + 8, 2, first_row['ที่อยู่'], f_ship_to)
 
-                    # --- [6. ส่วนตารางสินค้า (Table)] ---
+                    # --- [6. ส่วนตารางสินค้า] ---
                     header_row = curr + 10
                     headers = ['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']
                     for col_idx, text in enumerate(headers):
@@ -170,34 +160,32 @@ if uploaded_file:
                         worksheet.write(row_ptr, 4, r['จำนวน'], f_border_center)
                         row_ptr += 1
 
-                    # บรรทัดสรุปผลรวม (Total)
                     worksheet.merge_range(row_ptr, 0, row_ptr, 3, 'Total', f_table_head)
                     worksheet.write(row_ptr, 4, df_store['จำนวน'].sum(), f_border_center)
 
                     # --- [7. ส่วนท้ายกระดาษ (Signatures)] ---
-                    f_ptr = row_ptr + 1 # ใช้ f_ptr เป็นตำแหน่งเริ่ม Footer
-                    worksheet.set_row(f_ptr + 1, 60) # ปรับความสูงช่องเซ็นชื่อให้กว้างขึ้น
+                    f_ptr = row_ptr + 1 
+                    worksheet.set_row(f_ptr + 1, 60) 
                     
                     worksheet.merge_range(f_ptr, 0, f_ptr, 1, 'ผู้รับสินค้า', f_table_head)
                     worksheet.merge_range(f_ptr+1, 0, f_ptr+1, 1, 'ชื่อ (ตัวบรรจง):\nวันที่:', f_footer_box)
-                    
                     worksheet.merge_range(f_ptr, 2, f_ptr, 3, 'ผู้ส่งสินค้า / ทะเบียนรถ', f_table_head)
                     worksheet.merge_range(f_ptr+1, 2, f_ptr+1, 3, 'ชื่อ (ตัวบรรจง):\nวันที่:', f_footer_box)
-                    
                     worksheet.write(f_ptr, 4, 'คลังสินค้า', f_table_head)
                     worksheet.write(f_ptr+1, 4, 'ชื่อ:\nวันที่:', f_footer_box)
 
-                    # เลื่อนตำแหน่ง Cursor ไปยัง DO ถัดไป (เว้นระยะ 4 แถว)
+                    # คำนวณตำแหน่งสำหรับ DO ถัดไป
                     curr = f_ptr + 4
+                    do_count += 1
 
                 # --- [8. สั่งตัดหน้ากระดาษพิมพ์] ---
                 if page_breaks:
                     worksheet.set_h_pagebreaks(page_breaks)
 
-            st.success("✅ สร้างไฟล์ใบส่งสินค้าแบบ Master Continuous เรียบร้อยแล้ว!")
+            st.success("✅ แก้ไขระบบตัดหน้าเรียบร้อยแล้ว!")
             st.download_button(
                 label="📥 ดาวน์โหลดไฟล์ DO Master",
                 data=output_do.getvalue(),
-                file_name=f"DO_Master_Final_{datetime.now().strftime('%H%M')}.xlsx",
+                file_name=f"DO_Master_Fixed_{datetime.now().strftime('%H%M')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
