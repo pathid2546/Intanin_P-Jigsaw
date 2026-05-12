@@ -75,30 +75,39 @@ if uploaded_file:
             st.success("✅ สร้างไฟล์แยกซัพพลายเออร์เรียบร้อย!")
             st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output.getvalue(), file_name="Supplier_Splitter_V7.xlsx")
 
-# --- TAB 2: ระบบ GENPrint DO (ฉบับแก้ไข Ship To ไม่มีกรอบ และ Title ที่ C2) ---
+# --- TAB 2: ระบบ GENPrint DO (ปรับปรุง Ship To Merge B:C และจัดตำแหน่ง Delivery Date) ---
     with tab2:
-        st.subheader("📑 ออกใบส่งสินค้า (No Border Ship To - C2 Title)")
+        st.subheader("📑 ออกใบส่งสินค้า (Merge Ship To B:C & New Date Layout)")
         
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
         
-        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (Clean Layout)"):
+        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (Final Layout)"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
                 
-                # --- Styles ---
+                # --- [กำหนด Styles] ---
                 comp_name_fmt = workbook.add_format({'bold': True, 'font_size': 13})
                 doc_title_fmt = workbook.add_format({'bold': True, 'font_size': 18, 'align': 'center', 'valign': 'top'})
                 
                 std_left = workbook.add_format({'font_size': 10, 'align': 'left'})
                 std_right = workbook.add_format({'font_size': 10, 'align': 'right'})
                 
-                # สไตล์สำหรับที่อยู่ (ไม่มีกรอบ)
-                address_clean_fmt = workbook.add_format({
+                # สไตล์สำหรับที่อยู่ (Merge B:C และไม่มีกรอบ)
+                address_fmt = workbook.add_format({
                     'font_size': 10, 
                     'text_wrap': True, 
                     'valign': 'top',
                     'align': 'left'
+                })
+                
+                # สไตล์สำหรับ Delivery Date ตามตัวอย่าง
+                delivery_label_fmt = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'right'})
+                delivery_date_fmt = workbook.add_format({
+                    'bold': True, 
+                    'font_size': 11, 
+                    'num_format': 'dd/mm/yyyy', 
+                    'align': 'right'
                 })
                 
                 table_head = workbook.add_format({'border': 1, 'align': 'center', 'bold': True})
@@ -119,20 +128,20 @@ if uploaded_file:
                     worksheet.set_margins(0.3, 0.3, 0.3, 0.3)
                     worksheet.fit_to_pages(1, 0)
                     
-                    # Column Widths
-                    worksheet.set_column('A:A', 5)
-                    worksheet.set_column('B:B', 14)
-                    worksheet.set_column('C:C', 45)
-                    worksheet.set_column('D:D', 12)
-                    worksheet.set_column('E:E', 15)
+                    # ความกว้างคอลัมน์
+                    worksheet.set_column('A:A', 5)   # No.
+                    worksheet.set_column('B:B', 14)  # Code
+                    worksheet.set_column('C:C', 45)  # Product Name
+                    worksheet.set_column('D:D', 12)  # Unit
+                    worksheet.set_column('E:E', 15)  # QTY & Date
 
-                    # --- HEADER SECTION ---
+                    # --- [HEADER] ---
                     worksheet.write('A1', 'บริษัท โมบาย โลจิสติกส์ จำกัด', comp_name_fmt)
                     worksheet.write('A2', '279 หมู่ที่ 9 ตำบลบางโฉลง', std_left)
                     worksheet.write('A3', 'อำเภอบางพลี จังหวัดสมุทรปราการ 10540', std_left)
                     worksheet.write('A4', 'ติดต่อ/สอบถาม : Tel : 099-157-3114', std_left)
 
-                    # วางที่ C2 ช่องเดียวตามสั่ง
+                    # Title ที่ C2
                     worksheet.write('C2', 'ใบส่งสินค้าชั่วคราว', doc_title_fmt)
 
                     # ข้อมูลฝั่งขวา
@@ -142,21 +151,20 @@ if uploaded_file:
                     worksheet.write('E4', f'Zone {first_row["โซน"]}', std_right)
                     worksheet.write('E5', f'Cutoff Date {first_row["Cut Off Date"]}', std_right)
                     
-                    delivery_lbl = workbook.add_format({'bold': True, 'align': 'right', 'font_size': 11})
-                    worksheet.write('D8', 'Delivery Date', delivery_lbl)
-                    worksheet.write('E8', first_row['Delivery Date'], workbook.add_format({'bold': True, 'num_format': 'dd/mm/yyyy', 'align': 'right', 'font_size': 11}))
+                    # ปรับตำแหน่งและขนาด Delivery Date
+                    worksheet.write('D8', 'Delivery Date', delivery_label_fmt)
+                    worksheet.write('E8', first_row['Delivery Date'], delivery_date_fmt)
 
-                    # --- CUSTOMER SECTION (No Border on Ship To) ---
+                    # --- [CUSTOMER & SHIP TO] ---
                     worksheet.write('A5', 'Customer Name', std_left)
                     worksheet.write('A6', f'Store Code: {first_row["รหัสสาขา"]}', std_left)
                     worksheet.write('A7', f'Store Name: {first_row["Store Name"]}', std_left)
-                    worksheet.write('A8', 'Ship To:', std_left)
                     
-                    # เขียนที่อยู่ลงในแถวที่ 8 และ 9 โดยไม่มีการทำกรอบ
-                    # ใช้การเขียนธรรมดา ไม่ใช้ merge_range เพื่อหลีกเลี่ยงการสร้างกรอบเส้นขอบ
-                    worksheet.write('B8', first_row['ที่อยู่'], address_clean_fmt)
+                    # Merge B และ C สำหรับข้อมูล Ship To (ไม่มีเส้นขอบ)
+                    worksheet.write('A8', 'Ship To:', std_left)
+                    worksheet.merge_range('B8:C9', first_row['ที่อยู่'], address_fmt)
 
-                    # --- TABLE SECTION ---
+                    # --- [TABLE] ---
                     headers = ['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']
                     for col_num, head in enumerate(headers):
                         worksheet.write(10, col_num, head, table_head)
@@ -170,7 +178,7 @@ if uploaded_file:
                         worksheet.write(row_idx, 4, r['จำนวน'], border_center)
                         row_idx += 1
 
-                    # --- FOOTER SECTION ---
+                    # --- [FOOTER] ---
                     worksheet.merge_range(row_idx, 0, row_idx, 3, 'Total', workbook.add_format({'bold': True, 'border': 1, 'align': 'center'}))
                     worksheet.write(row_idx, 4, df_store['จำนวน'].sum(), border_center)
                     
@@ -186,5 +194,5 @@ if uploaded_file:
                     worksheet.write(f_row, 4, 'คลังสินค้า', table_head)
                     worksheet.write(f_row+1, 4, 'ชื่อ:\nวันที่:', footer_box)
 
-            st.success("✅ แก้ไข Ship To ไม่มีกรอบ และ Title อยู่ที่ C2 เรียบร้อย!")
-            st.download_button("📥 ดาวน์โหลดไฟล์ DO", output_do.getvalue(), "DO_Clean_Layout.xlsx")
+            st.success("✅ ปรับปรุงการ Merge Ship To และรูปแบบวันที่เรียบร้อยแล้ว!")
+            st.download_button("📥 ดาวน์โหลดไฟล์ DO", output_do.getvalue(), "DO_Updated_Layout.xlsx")
