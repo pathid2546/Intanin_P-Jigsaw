@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="DO System V12.2", layout="wide")
+st.set_page_config(page_title="DO System V12.3", layout="wide")
 
-st.title("📦 ระบบจัดการขนส่ง (V12.2 - ปรับขนาด Font & ซ่อม Tab 1)")
+st.title("📦 ระบบจัดการขนส่ง (V12.3 - Fix Download Button Error)")
 st.markdown("---")
 
-# ระบบจำชื่อ (Memory) สำหรับ Tab 1
 if 'name_memory' not in st.session_state:
     st.session_state['name_memory'] = {}
 
@@ -18,7 +17,7 @@ if uploaded_file:
     
     tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์", "📄 2. ออกใบส่งสินค้า (Font 11)"])
 
-    # --- TAB 1: ระบบแยกซัพพลายเออร์ ---
+    # --- TAB 1: แก้ไขย้ายปุ่มดาวน์โหลดออกนอกฟอร์ม ---
     with tab1:
         df_split = df_raw.dropna(subset=['ซัพพลายเออร์'])
         unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
@@ -31,49 +30,47 @@ if uploaded_file:
                     saved_val = st.session_state['name_memory'].get(supplier, str(supplier)[:20].strip())
                     current_mapping[supplier] = st.text_input(f"ซัพพลายเออร์: {supplier}", value=saved_val, key=f"s_{supplier}")
             
-            if st.form_submit_button("สร้างไฟล์แยกชีต"):
-                output_split = io.BytesIO()
-                with pd.ExcelWriter(output_split, engine='xlsxwriter') as writer:
-                    for supplier, sheet_name in current_mapping.items():
-                        st.session_state['name_memory'][supplier] = sheet_name
-                        df_sup = df_split[df_split['ซัพพลายเออร์'] == supplier].copy()
-                        clean_name = "".join([c for c in sheet_name if c.isalnum() or c in " _-"])[:31]
-                        df_sup.to_excel(writer, sheet_name=clean_name, index=False)
-                st.success("✅ แยกชีตสำเร็จ!")
-                st.download_button("📥 ดาวน์โหลดไฟล์แยกชีต", output_split.getvalue(), "Supplier_Split.xlsx")
+            submit_btn = st.form_submit_button("ประมวลผลแยกชีต")
+            
+        # ส่วนดาวน์โหลดต้องอยู่นอก st.form
+        if submit_btn:
+            output_split = io.BytesIO()
+            with pd.ExcelWriter(output_split, engine='xlsxwriter') as writer:
+                for supplier, sheet_name in current_mapping.items():
+                    st.session_state['name_memory'][supplier] = sheet_name
+                    df_sup = df_split[df_split['ซัพพลายเออร์'] == supplier].copy()
+                    clean_name = "".join([c for c in sheet_name if c.isalnum() or c in " _-"])[:31]
+                    df_sup.to_excel(writer, sheet_name=clean_name, index=False)
+            
+            st.success("✅ ประมวลผลสำเร็จ! กดปุ่มด้านล่างเพื่อดาวน์โหลด")
+            st.download_button("📥 ดาวน์โหลดไฟล์แยกชีต", output_split.getvalue(), "Supplier_Split.xlsx")
 
-    # --- TAB 2: ออกใบ DO (Base V11.0 + ปรับ Font 11) ---
+    # --- TAB 2: คงเดิมตาม V12.2 (Base V11.0 + Font 11) ---
     with tab2:
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
-        if st.button("🚀 สร้างใบส่งสินค้า V12.2"):
+        if st.button("🚀 สร้างใบส่งสินค้า V12.3"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
                 worksheet = workbook.add_worksheet("DO_Master")
                 
-                # Setup Layout
                 worksheet.set_paper(9) 
                 worksheet.set_margins(0.3, 0.3, 0.3, 0.3)
                 worksheet.set_column('A:A', 8)    
-                worksheet.set_column('B:B', 35)   # 250 pixels
+                worksheet.set_column('B:B', 35)   
                 worksheet.set_column('C:C', 35)   
                 worksheet.set_column('D:D', 18)   
                 worksheet.set_column('E:E', 22)   
                 
-                # Styles
                 f_comp = workbook.add_format({'bold': True, 'font_size': 14})
                 f_title = workbook.add_format({'bold': True, 'font_size': 18, 'align': 'center', 'valign': 'vcenter'})
                 f_std = workbook.add_format({'font_size': 11})
                 f_bold = workbook.add_format({'bold': True, 'font_size': 11})
                 f_right = workbook.add_format({'font_size': 11, 'align': 'right'})
                 
-                # Delivery Date (FIXED: Font Size 11 & No Highlight)
-                f_deliv_label = workbook.add_format({
-                    'bold': True, 'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True
-                })
-                f_deliv_date = workbook.add_format({
-                    'bold': True, 'font_size': 11, 'align': 'center', 'valign': 'vcenter'
-                })
+                # Delivery Date (Font 11 & No Highlight)
+                f_deliv_label = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
+                f_deliv_date = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'center', 'valign': 'vcenter'})
 
                 f_border = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
                 f_table_h = workbook.add_format({'border': 1, 'align': 'center', 'bold': True, 'bg_color': '#F2F2F2'})
@@ -87,7 +84,6 @@ if uploaded_file:
                     if curr > 0: page_breaks.append(curr)
                     first = df_store.iloc[0]
 
-                    # Header ส่วนบน
                     worksheet.merge_range(curr, 0, curr, 2, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_comp)
                     worksheet.merge_range(curr+1, 0, curr+1, 1, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
                     worksheet.merge_range(curr+2, 0, curr+2, 1, 'จังหวัดสมุทรปราการ 10540', f_std)
@@ -97,10 +93,8 @@ if uploaded_file:
                     worksheet.write(curr+6, 0, f'Store Name: {first["Store Name"]}', f_bold)
                     worksheet.write(curr+7, 0, f'Ship To: {first["ที่อยู่"]}', f_std)
 
-                    # Title
                     worksheet.merge_range(curr+1, 2, curr+2, 2, 'ใบส่งสินค้าชั่วคราว', f_title)
 
-                    # Right Data
                     worksheet.write(curr, 3, 'Do. No.', f_right)
                     worksheet.write(curr, 4, str(first["เลขที่ DO."]), f_std)
                     worksheet.write(curr+1, 3, 'Ref. Po.', f_right)
@@ -116,12 +110,10 @@ if uploaded_file:
                     worksheet.write(curr+5, 3, 'Zone', f_right)
                     worksheet.write(curr+5, 4, str(first["โซน"]), f_std)
                     
-                    # Delivery Date (Font 11 & Vertical Merge)
                     delivery = pd.to_datetime(first["Delivery Date"]).strftime('%d/%m/%Y') if pd.notnull(first["Delivery Date"]) else "-"
                     worksheet.merge_range(curr+7, 3, curr+8, 3, "Delivery\nDate", f_deliv_label)
                     worksheet.merge_range(curr+7, 4, curr+8, 4, delivery, f_deliv_date)
 
-                    # Table
                     t_h = curr + 10 
                     for i, txt in enumerate(['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']):
                         worksheet.write(t_h, i, txt, f_table_h)
@@ -138,7 +130,6 @@ if uploaded_file:
                     worksheet.merge_range(r_ptr, 0, r_ptr, 3, 'Total', f_table_h)
                     worksheet.write(r_ptr, 4, df_store['จำนวน'].sum(), f_border)
 
-                    # Footer
                     f_row = r_ptr + 1
                     worksheet.merge_range(f_row, 0, f_row, 1, 'ผู้รับสินค้า', f_footer_h)
                     worksheet.merge_range(f_row, 2, f_row, 3, 'ผู้ส่งสินค้า / ทะเบียนรถ', f_footer_h)
@@ -154,5 +145,5 @@ if uploaded_file:
                 worksheet.set_h_pagebreaks(page_breaks)
                 worksheet.fit_to_pages(1, 0)
 
-            st.success("✅ V12.2 เรียบร้อย! ปรับ Font 11 และซ่อม Tab 1 แล้วครับ")
-            st.download_button("📥 ดาวน์โหลด DO V12.2", output_do.getvalue(), "DO_V12_Final.xlsx")
+            st.success("✅ V12.3 แก้ไข Error ปุ่มดาวน์โหลดเรียบร้อยครับ")
+            st.download_button("📥 ดาวน์โหลด DO V12.3", output_do.getvalue(), "DO_V12_Final.xlsx")
