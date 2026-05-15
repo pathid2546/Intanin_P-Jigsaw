@@ -3,9 +3,9 @@ import pandas as pd
 import io
 from datetime import datetime
 
-st.set_page_config(page_title="Supplier & DO System V7.5", layout="wide")
+st.set_page_config(page_title="Supplier & DO System Final", layout="wide")
 
-# --- Header ของโปรแกรม ---
+# --- ส่วนหัวโปรแกรม ---
 st.title("📦 ระบบจัดการข้อมูลขนส่ง (Splitter & DO Generator)")
 st.markdown("---")
 
@@ -20,7 +20,7 @@ if uploaded_file:
     
     tab1, tab2 = st.tabs(["✂️ แยกข้อมูลซัพพลายเออร์ (V6.7.1)", "📄 สร้างใบส่งสินค้า (GENPrint DO)"])
 
-    # --- TAB 1: ระบบแยกซัพพลายเออร์ (Format ตาม image_0b3a7c.png) ---
+    # --- TAB 1: ระบบแยกซัพพลายเออร์ (คงเดิมตาม Format image_0b3a7c.png) ---
     with tab1:
         df_split = df_raw.dropna(subset=['ซัพพลายเออร์'])
         unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
@@ -50,7 +50,6 @@ if uploaded_file:
                     df_sup = df_split[df_split['ซัพพลายเออร์'] == supplier].copy()
                     worksheet = workbook.add_worksheet(clean_name)
                     
-                    # ฝั่งซ้าย
                     left_headers = ['รหัสสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
                     for col, h in enumerate(left_headers): worksheet.write(0, col, h, header_fmt)
 
@@ -67,7 +66,6 @@ if uploaded_file:
                             curr_row += 1
                     worksheet.write(curr_row, 0, "Grand Total", total_fmt); worksheet.write(curr_row, 6, df_sup['จำนวน'].sum(), total_fmt)
                     
-                    # ฝั่งขวา
                     col_offset = 9
                     right_headers = ['ซัพพลายเออร์', 'รหัสสินค้า', 'รายการสินค้า', 'Total']
                     for col, h in enumerate(right_headers): worksheet.write(0, col_offset + col, h, header_fmt)
@@ -83,12 +81,12 @@ if uploaded_file:
 
             st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output.getvalue(), file_name="Supplier_Splitter.xlsx")
 
-    # --- TAB 2: ระบบ GENPrint DO (แก้ไข Footer เป๊ะตาม image_31d0a8.png) ---
+    # --- TAB 2: ระบบ GENPrint DO (Hybrid: Header V7.2 + Footer V7.5) ---
     with tab2:
-        st.subheader("📑 ออกใบส่งสินค้า (ปรับปรุง Footer ให้สมบูรณ์)")
+        st.subheader("📑 ออกใบส่งสินค้า (Header ครบ + Footer เป๊ะ)")
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
         
-        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (DO Master Fixed)"):
+        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (Final Master)"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
@@ -102,8 +100,6 @@ if uploaded_file:
                 f_table_head = workbook.add_format({'border': 1, 'align': 'center', 'bold': True, 'bg_color': '#F2F2F2', 'font_size': 10})
                 f_border_center = workbook.add_format({'border': 1, 'align': 'center', 'font_size': 10})
                 f_wrap = workbook.add_format({'border': 1, 'text_wrap': True, 'font_size': 10})
-                
-                # Footer Styles (ตามรูป 31d0a8)
                 f_footer_label = workbook.add_format({'left': 1, 'right': 1, 'font_size': 9, 'valign': 'top'})
                 f_footer_last = workbook.add_format({'left': 1, 'right': 1, 'bottom': 1, 'font_size': 9, 'valign': 'top'})
 
@@ -117,7 +113,7 @@ if uploaded_file:
                     if do_count > 0: page_breaks.append(curr)
                     first_row = df_store.iloc[0]
                     
-                    # --- Header Section ---
+                    # --- [1. Header จาก V7.2 (ข้อมูลครบ)] ---
                     worksheet.write(curr, 0, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_header_company)
                     worksheet.write(curr + 1, 0, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
                     worksheet.write(curr + 2, 0, 'จังหวัดสมุทรปราการ 10540', f_std)
@@ -127,13 +123,15 @@ if uploaded_file:
                     worksheet.write(curr + 6, 0, f'Store Name: {first_row["Store Name"]}', f_header_company)
                     worksheet.write(curr + 7, 0, f'Ship To: {first_row["ที่อยู่"]}', f_std)
 
-                    worksheet.write(curr + 1, 2, 'ใบส่งสินค้าชั่วคราว', f_title)
+                    worksheet.write(curr + 2, 2, 'ใบส่งสินค้าชั่วคราว', f_title) # จัดตำแหน่งหัวข้อให้อยู่ระดับเดียวกันกับเนื้อหา
                     worksheet.write(curr, 4, f'Do. No. {first_row["เลขที่ DO."]}', f_right)
                     worksheet.write(curr + 1, 4, f'Ref. Po. {first_row["เลขที่ PO."]}', f_right)
+                    worksheet.write(curr + 2, 4, 'Ref. Po. -', f_right)
+                    worksheet.write(curr + 3, 4, 'Ref. Po. -', f_right)
                     worksheet.write(curr + 4, 4, f'Zone {first_row["โซน"]}', f_right)
                     worksheet.write(curr + 7, 4, f'Delivery Date: {first_row["Delivery Date"]}', f_right)
 
-                    # --- Table Section ---
+                    # --- [2. Table สินค้า] ---
                     h_row = curr + 10
                     for col, text in enumerate(['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']):
                         worksheet.write(h_row, col, text, f_table_head)
@@ -150,19 +148,17 @@ if uploaded_file:
                     worksheet.merge_range(r_ptr, 0, r_ptr, 3, 'Total', f_table_head)
                     worksheet.write(r_ptr, 4, df_store['จำนวน'].sum(), f_border_center)
 
-                    # --- [Footer Section: แก้ไขตามรูป 31d0a8] ---
+                    # --- [3. Footer จาก V7.5 (เป๊ะตาม image_31d0a8)] ---
                     f_row = r_ptr + 1
-                    # หัวข้อลายเซ็น
                     worksheet.merge_range(f_row, 0, f_row, 1, 'ผู้รับสินค้า', f_table_head)
                     worksheet.merge_range(f_row, 2, f_row, 3, 'ผู้ส่งสินค้า / ทะเบียนรถ', f_table_head)
                     worksheet.write(f_row, 4, 'คลังสินค้า', f_table_head)
                     f_row += 1
 
-                    # รายละเอียดข้างในช่อง
                     labels = ['ชื่อ (ตัวบรรจง):', 'วันที่:', 'เวลา:', 'หมายเหตุ:']
                     for idx, label in enumerate(labels):
                         fmt = f_footer_label if idx < len(labels)-1 else f_footer_last
-                        if idx == 0: worksheet.set_row(f_row, 28) # ขยายช่องชื่อให้เขียนง่าย
+                        if idx == 0: worksheet.set_row(f_row, 28) # ขยายช่องชื่อ
                         
                         worksheet.merge_range(f_row, 0, f_row, 1, label, fmt)
                         worksheet.merge_range(f_row, 2, f_row, 3, label, fmt)
@@ -173,5 +169,5 @@ if uploaded_file:
 
                 if page_breaks: worksheet.set_h_pagebreaks(page_breaks)
 
-            st.success("✅ สร้างใบส่งสินค้าพร้อม Footer ใหม่เรียบร้อย!")
-            st.download_button(label="📥 ดาวน์โหลดไฟล์ DO Master", data=output_do.getvalue(), file_name=f"DO_Final_{datetime.now().strftime('%H%M')}.xlsx")
+            st.success("✅ รวมร่าง Header และ Footer เรียบร้อยแล้ว!")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์ DO Master", data=output_do.getvalue(), file_name=f"DO_Final_Master.xlsx")
