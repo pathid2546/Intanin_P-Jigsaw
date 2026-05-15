@@ -3,9 +3,9 @@ import pandas as pd
 import io
 from datetime import datetime
 
-st.set_page_config(page_title="Supplier & DO System V7.9", layout="wide")
+st.set_page_config(page_title="Supplier & DO System V8.0", layout="wide")
 
-st.title("📦 ระบบจัดการข้อมูลขนส่ง (Splitter & DO Generator)")
+st.title("📦 ระบบจัดการข้อมูลขนส่ง (Full Text Display Version)")
 st.markdown("---")
 
 if 'name_memory' not in st.session_state:
@@ -79,12 +79,12 @@ if uploaded_file:
 
             st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output.getvalue(), file_name="Supplier_Splitter.xlsx")
 
-    # --- TAB 2: ระบบ GENPrint DO (จัดตำแหน่งตาม image_316bc4.png) ---
+    # --- TAB 2: ระบบ GENPrint DO (แก้ไขให้แสดงข้อความครบ) ---
     with tab2:
-        st.subheader("📑 ออกใบส่งสินค้า (Layout ตามตัวอย่างภาพ)")
+        st.subheader("📑 ออกใบส่งสินค้า (แก้ไขข้อความติดต่อแสดงครบถ้วน)")
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
         
-        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (V7.9 Final)"):
+        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (V8.0 Final)"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
@@ -112,26 +112,20 @@ if uploaded_file:
                     if do_count > 0: page_breaks.append(curr)
                     first_row = df_store.iloc[0]
                     
-                    # --- Header Section (อ้างอิงจาก image_316bc4.png) ---
-                    # A1: ชื่อบริษัท
-                    worksheet.write(curr, 0, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_header_company)
-                    # A2: ที่อยู่บรรทัดที่ 1
-                    worksheet.write(curr + 1, 0, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
-                    # A3: จังหวัด (ตามที่ย้ำมา)
-                    worksheet.write(curr + 2, 0, 'จังหวัดสมุทรปราการ 10540', f_std)
-                    # A4: ข้อมูลติดต่อ
-                    worksheet.write(curr + 3, 0, 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', f_std)
-                    # A5: Customer Name
-                    worksheet.write(curr + 4, 0, 'Customer Name: ................................................................', f_std)
-                    # A6: Store Code (Bold)
-                    worksheet.write(curr + 5, 0, f'Store Code: {store_code}', f_bold)
-                    # A7: Store Name (Bold)
-                    worksheet.write(curr + 6, 0, f'Store Name: {first_row["Store Name"]}', f_bold)
-                    # A8: Ship To
-                    worksheet.write(curr + 7, 0, f'Ship To: {first_row["ที่อยู่"]}', f_std)
+                    # --- Header Section: ใช้ merge_range เพื่อให้ข้อความยาวๆ แสดงครบ ---
+                    worksheet.merge_range(curr, 0, curr, 1, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_header_company)
+                    worksheet.merge_range(curr + 1, 0, curr + 1, 1, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
+                    worksheet.write(curr + 2, 0, 'จังหวัดสมุทรปราการ 10540', f_std) # ตามคำขอ A3
+                    
+                    # แก้ไขบรรทัดติดต่อ: Merge คอลัมน์ A ถึง D เพื่อให้แสดง Line ID และเบอร์โทรครบถ้วน
+                    worksheet.merge_range(curr + 3, 0, curr + 3, 3, 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', f_std)
+                    
+                    worksheet.merge_range(curr + 4, 0, curr + 4, 3, 'Customer Name: ................................................................', f_std)
+                    worksheet.merge_range(curr + 5, 0, curr + 5, 1, f'Store Code: {store_code}', f_bold)
+                    worksheet.merge_range(curr + 6, 0, curr + 6, 1, f'Store Name: {first_row["Store Name"]}', f_bold)
+                    worksheet.merge_range(curr + 7, 0, curr + 7, 3, f'Ship To: {first_row["ที่อยู่"]}', f_std)
 
                     # --- กลางและขวา ---
-                    # หัวข้อใหญ่ (ใบส่งสินค้าชั่วคราว) อยู่แถวเดียวกับจังหวัด-ติดต่อ
                     worksheet.merge_range(curr + 2, 2, curr + 3, 3, 'ใบส่งสินค้าชั่วคราว', f_title)
                     
                     worksheet.write(curr, 4, f'Do. No. {first_row["เลขที่ DO."]}', f_right)
@@ -142,7 +136,10 @@ if uploaded_file:
                     cutoff_val = first_row.get('Cut off Date', first_row.get('Cutoff', '-'))
                     worksheet.write(curr + 4, 4, f'Cut off Date: {cutoff_val}', f_right)
                     worksheet.write(curr + 5, 4, f'Zone {first_row["โซน"]}', f_right)
-                    worksheet.write(curr + 7, 4, f'Delivery Date: {first_row["Delivery Date"]}', f_right)
+                    
+                    # ปรับ Delivery Date ให้แสดงเฉพาะวันที่ (ลบเวลาออกถ้ามี)
+                    del_date = str(first_row["Delivery Date"]).split(' ')[0]
+                    worksheet.write(curr + 7, 4, f'Delivery Date: {del_date}', f_right)
 
                     # --- Table Section ---
                     h_row = curr + 10
@@ -151,8 +148,10 @@ if uploaded_file:
 
                     r_ptr = h_row + 1
                     for i, (_, r) in enumerate(df_store.iterrows(), 1):
-                        worksheet.write(r_ptr, 0, i, f_border_center); worksheet.write(r_ptr, 1, r['รหัสสินค้า'], f_border_center)
-                        worksheet.write(r_ptr, 2, r['รายการสินค้า'], f_wrap); worksheet.write(r_ptr, 3, r['หน่วย'], f_border_center)
+                        worksheet.write(r_ptr, 0, i, f_border_center)
+                        worksheet.write(r_ptr, 1, r['รหัสสินค้า'], f_border_center)
+                        worksheet.write(r_ptr, 2, r['รายการสินค้า'], f_wrap)
+                        worksheet.write(r_ptr, 3, r['หน่วย'], f_border_center)
                         worksheet.write(r_ptr, 4, r['จำนวน'], f_border_center)
                         r_ptr += 1
                     
@@ -178,5 +177,5 @@ if uploaded_file:
 
                 if page_breaks: worksheet.set_h_pagebreaks(page_breaks)
 
-            st.success("✅ ปรับแก้โครงสร้าง Header เรียบร้อยแล้ว!")
-            st.download_button(label="📥 ดาวน์โหลดไฟล์ DO Master", data=output_do.getvalue(), file_name=f"DO_Layout_Fixed.xlsx")
+            st.success("✅ แก้ไขการแสดงผลข้อความเรียบร้อยแล้ว!")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์ DO Master", data=output_do.getvalue(), file_name=f"DO_FullText_Fixed.xlsx")
