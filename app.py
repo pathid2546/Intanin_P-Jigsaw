@@ -17,33 +17,67 @@ if uploaded_file:
     
     tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์", "📄 2. ออกใบส่งสินค้า (Font 11)"])
 
-    # --- TAB 1: แก้ไขย้ายปุ่มดาวน์โหลดออกนอกฟอร์ม ---
-    with tab1:
+with tab1:
         df_split = df_raw.dropna(subset=['ซัพพลายเออร์'])
         unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
-        
-        with st.form("supplier_form"):
+        st.subheader("📝 กำหนดชื่อตัวย่อชีต")
+        with st.form("sheet_name_form"):
             cols = st.columns(3)
             current_mapping = {}
             for i, supplier in enumerate(unique_suppliers):
                 with cols[i % 3]:
-                    saved_val = st.session_state['name_memory'].get(supplier, str(supplier)[:20].strip())
-                    current_mapping[supplier] = st.text_input(f"ซัพพลายเออร์: {supplier}", value=saved_val, key=f"s_{supplier}")
-            
-            submit_btn = st.form_submit_button("ประมวลผลแยกชีต")
-            
-        # ส่วนดาวน์โหลดต้องอยู่นอก st.form
-        if submit_btn:
-            output_split = io.BytesIO()
-            with pd.ExcelWriter(output_split, engine='xlsxwriter') as writer:
+                    remembered_name = st.session_state['name_memory'].get(supplier, str(supplier)[:10].strip())
+                    current_mapping[supplier] = st.text_input(f"{supplier}:", value=remembered_name, key=f"input_{supplier}")
+            submit_split = st.form_submit_button("สร้างไฟล์แยกซัพพลายเออร์")
+
+        if submit_split:
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                workbook = writer.book
+                header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1, 'align': 'center'})
+                cell_fmt = workbook.add_format({'border': 1})
+                num_fmt = workbook.add_format({'border': 1, 'align': 'right'})
+                total_fmt = workbook.add_format({'bold': True, 'bg_color': '#F3F3F3', 'border': 1, 'align': 'right', 'num_format': '#,##0'})
+                
                 for supplier, sheet_name in current_mapping.items():
                     st.session_state['name_memory'][supplier] = sheet_name
+                    clean_name = "".join([c if c not in r'[]:*?/\ ' else ' ' for c in sheet_name.strip()[:31]])
                     df_sup = df_split[df_split['ซัพพลายเออร์'] == supplier].copy()
-                    clean_name = "".join([c for c in sheet_name if c.isalnum() or c in " _-"])[:31]
-                    df_sup.to_excel(writer, sheet_name=clean_name, index=False)
-            
-            st.success("✅ ประมวลผลสำเร็จ! กดปุ่มด้านล่างเพื่อดาวน์โหลด")
-            st.download_button("📥 ดาวน์โหลดไฟล์แยกชีต", output_split.getvalue(), "Supplier_Split.xlsx")
+                    worksheet = workbook.add_worksheet(clean_name)
+                    
+                    left_headers = ['รหัสสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
+                    for col, h in enumerate(left_headers): worksheet.write(0, col, h, header_fmt)
+
+                    curr_row = 1
+                    for (branch, zone), b_group in df_sup.groupby(['รหัสสาขา', 'โซน'], sort=False):
+                        for i, (_, row) in enumerate(b_group.iterrows()):
+                            worksheet.write(curr_row, 0, branch if i == 0 else "", cell_fmt)
+                            worksheet.write(curr_row, 1, zone if i == 0 else "", cell_fmt)
+                            worksheet.write(curr_row, 2, row['รหัสสินค้า'], cell_fmt)
+                            worksheet.write(curr_row, 3, row['รายการสินค้า'], cell_fmt)
+                            worksheet.write(curr_row, 4, row['ซัพพลายเออร์'], cell_fmt)
+                            worksheet.write(curr_row, 5, row['หน่วย'], cell_fmt)
+                            worksheet.write(curr_row, 6, row['จำนวน'], num_fmt)
+                            curr_row += 1
+                    
+                    worksheet.write(curr_row, 0, "Grand Total", total_fmt); worksheet.write(curr_row, 6, df_sup['จำนวน'].sum(), total_fmt)
+                    
+                    col_offset = 9
+                    right_headers = ['ซัพพลายเออร์', 'รหัสสินค้า', 'รายการสินค้า', 'Total']
+                    for col, h in enumerate(right_headers): worksheet.write(0, col_offset + col, h, header_fmt)
+                    right_summary = df_sup.groupby(['รหัสสินค้า', 'รายการสินค้า'], as_index=False)['จำนวน'].sum()
+                    for i, row in right_summary.iterrows():
+                        worksheet.write(i + 1, col_offset, "", cell_fmt)
+                        worksheet.write(i + 1, col_offset + 1, row['รหัสสินค้า'], cell_fmt)
+                        worksheet.write(i + 1, col_offset + 2, row['รายการสินค้า'], cell_fmt)
+                        worksheet.write(i + 1, col_offset + 3, row['จำนวน'], num_fmt)
+                    sum_row = len(right_summary) + 1
+                    worksheet.write(sum_row, col_offset, f"{supplier} Total", total_fmt)
+                    worksheet.write(sum_row, col_offset + 3, right_summary['จำนวน'].sum(), total_fmt)
+                    worksheet.set_column('A:G', 15); worksheet.set_column('D:D', 35); worksheet.set_column('L:L', 35)
+
+            st.success("✅ สร้างไฟล์แยกซัพพลายเออร์เรียบร้อย!")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output.getvalue(), file_name="Supplier_Splitter_V7.xlsx")
 
     # --- TAB 2: คงเดิมตาม V12.2 (Base V11.0 + Font 11) ---
     with tab2:
