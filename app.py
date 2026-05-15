@@ -3,9 +3,9 @@ import pandas as pd
 import io
 from datetime import datetime
 
-st.set_page_config(page_title="Supplier & DO System V8.1", layout="wide")
+st.set_page_config(page_title="Supplier & DO System V8.2", layout="wide")
 
-st.title("📦 ระบบจัดการข้อมูลขนส่ง (Fixed Overlap Version)")
+st.title("📦 ระบบจัดการข้อมูลขนส่ง (Final UI Refinement)")
 st.markdown("---")
 
 if 'name_memory' not in st.session_state:
@@ -79,12 +79,12 @@ if uploaded_file:
 
             st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output.getvalue(), file_name="Supplier_Splitter.xlsx")
 
-    # --- TAB 2: ระบบ GENPrint DO (แก้ไข Error Overlapping) ---
+    # --- TAB 2: ระบบ GENPrint DO (แก้ไข UI ตามคอมเมนต์ล่าสุด) ---
     with tab2:
-        st.subheader("📑 ออกใบส่งสินค้า (ฉบับแก้ไข Error Overlap)")
+        st.subheader("📑 ออกใบส่งสินค้า (ปรับแก้ UI แสดงผลครบถ้วน)")
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
         
-        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (V8.1 Final)"):
+        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (V8.2 Final)"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
@@ -104,7 +104,7 @@ if uploaded_file:
 
                 worksheet.set_paper(9); worksheet.set_margins(0.3, 0.3, 0.3, 0.3)
                 worksheet.set_column('A:A', 8); worksheet.set_column('B:B', 15); worksheet.set_column('C:C', 40)
-                worksheet.set_column('D:D', 15); worksheet.set_column('E:E', 15)
+                worksheet.set_column('D:D', 15); worksheet.set_column('E:E', 20) # ขยายคอลัมน์ E เพิ่ม
                 
                 curr = 0; page_breaks = []; do_count = 0 
                 for store_code in df_clean['รหัสสาขา'].unique():
@@ -112,32 +112,38 @@ if uploaded_file:
                     if do_count > 0: page_breaks.append(curr)
                     first_row = df_store.iloc[0]
                     
-                    # --- Header Section (ป้องกัน Overlap) ---
-                    worksheet.write(curr, 0, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_header_company)
-                    worksheet.write(curr + 1, 0, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
-                    worksheet.write(curr + 2, 0, 'จังหวัดสมุทรปราการ 10540', f_std)
+                    # --- Header Section (Fixing Text Display) ---
+                    worksheet.merge_range(curr, 0, curr, 2, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_header_company)
+                    # แก้ไข A2: Merge ถึงคอลัมน์ C เพื่อให้ที่อยู่แสดงครบ
+                    worksheet.merge_range(curr + 1, 0, curr + 1, 2, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
+                    worksheet.write(curr + 2, 0, 'จังหวัดสมุทรปราการ 10540', f_std) # A3
                     
-                    # ใช้ merge_range ที่ไม่ทับกับ Column E
+                    # แก้ไขบรรทัดติดต่อ: Merge คอลัมน์ A ถึง D เพื่อให้แสดงข้อมูลครบ
                     worksheet.merge_range(curr + 3, 0, curr + 3, 3, 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', f_std)
-                    worksheet.merge_range(curr + 4, 0, curr + 4, 3, 'Customer Name: ................................................................', f_std)
                     
-                    worksheet.write(curr + 5, 0, f'Store Code: {store_code}', f_bold)
-                    worksheet.write(curr + 6, 0, f'Store Name: {first_row["Store Name"]}', f_bold)
+                    # แก้ไข Customer Name: ตัดจุดไข่ปลาออก
+                    worksheet.write(curr + 4, 0, 'Customer Name', f_std)
+                    
+                    worksheet.merge_range(curr + 5, 0, curr + 5, 1, f'Store Code: {store_code}', f_bold)
+                    worksheet.merge_range(curr + 6, 0, curr + 6, 1, f'Store Name: {first_row["Store Name"]}', f_bold)
                     worksheet.merge_range(curr + 7, 0, curr + 7, 3, f'Ship To: {first_row["ที่อยู่"]}', f_std)
 
-                    # --- ส่วนกลาง (Merge เฉพาะช่องว่าง ไม่ทับฝั่งขวา) ---
-                    # หัวข้อใหญ่ Merge คอลัมน์ C ถึง D (2-3) ไม่ให้ไปโดน E (4)
+                    # --- Center & Right Section ---
                     worksheet.merge_range(curr + 1, 2, curr + 2, 3, 'ใบส่งสินค้าชั่วคราว', f_title)
                     
-                    # --- ฝั่งขวา (Column E = index 4) ---
                     worksheet.write(curr, 4, f'Do. No. {first_row["เลขที่ DO."]}', f_right)
                     worksheet.write(curr + 1, 4, f'Ref. Po. {first_row["เลขที่ PO."]}', f_right)
                     worksheet.write(curr + 2, 4, 'Ref. Po. -', f_right)
                     worksheet.write(curr + 3, 4, 'Ref. Po. -', f_right)
                     
-                    cutoff_val = first_row.get('Cut off Date', first_row.get('Cutoff', '-'))
-                    worksheet.write(curr + 4, 4, f'Cut off Date: {cutoff_val}', f_right)
+                    # ดึงข้อมูลจากคอลัมน์ "Cut Off Date" (มีช่องว่าง)
+                    cutoff_val = first_row.get('Cut Off Date', first_row.get('Cutoff', '-'))
+                    if pd.isna(cutoff_val): cutoff_val = '-'
+                    worksheet.write(curr + 4, 4, f'Cut Off Date: {cutoff_val}', f_right)
+                    
                     worksheet.write(curr + 5, 4, f'Zone {first_row["โซน"]}', f_right)
+                    
+                    # แก้ไข Delivery Date: ปรับให้แสดงเฉพาะวันที่และขยับ Column ให้เห็นชัด
                     del_date = str(first_row["Delivery Date"]).split(' ')[0]
                     worksheet.write(curr + 7, 4, f'Delivery Date: {del_date}', f_right)
 
@@ -177,5 +183,5 @@ if uploaded_file:
 
                 if page_breaks: worksheet.set_h_pagebreaks(page_breaks)
 
-            st.success("✅ แก้ไขปัญหา Overlap เรียบร้อยแล้ว!")
-            st.download_button(label="📥 ดาวน์โหลดไฟล์ DO Master", data=output_do.getvalue(), file_name=f"DO_Fixed_Overlap.xlsx")
+            st.success("✅ ปรับปรุง UI และการดึงข้อมูล Cut Off Date เรียบร้อยแล้ว!")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์ DO Master", data=output_do.getvalue(), file_name=f"DO_Final_Refined.xlsx")
