@@ -3,9 +3,9 @@ import pandas as pd
 import io
 from datetime import datetime
 
-st.set_page_config(page_title="Supplier & DO System V8.3", layout="wide")
+st.set_page_config(page_title="Supplier & DO System V8.4", layout="wide")
 
-st.title("📦 ระบบจัดการข้อมูลขนส่ง (Fixed Layout Version)")
+st.title("📦 ระบบจัดการข้อมูลขนส่ง (V8.4 A4 & Layout Optimized)")
 st.markdown("---")
 
 if 'name_memory' not in st.session_state:
@@ -79,32 +79,39 @@ if uploaded_file:
 
             st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output.getvalue(), file_name="Supplier_Splitter.xlsx")
 
-    # --- TAB 2: ระบบ GENPrint DO (แก้ไข Error Overlapping & UI) ---
+    # --- TAB 2: ระบบ GENPrint DO (V8.4: A4 & Store Name Fixed) ---
     with tab2:
-        st.subheader("📑 ออกใบส่งสินค้า (V8.3 Fixed Overlap)")
+        st.subheader("📑 ออกใบส่งสินค้า (ปรับปรุงขนาด A4 และชื่อร้าน)")
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
         
-        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (V8.3)"):
+        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (V8.4 Final)"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
-                worksheet = workbook.add_worksheet("DO_Continuous")
+                worksheet = workbook.add_worksheet("DO_Master")
+                
+                # --- Page Setup for A4 ---
+                worksheet.set_paper(9)  # 9 = A4
+                worksheet.set_margins(0.5, 0.5, 0.5, 0.5) # Margins in inches
+                worksheet.fit_to_pages(1, 0) # Fit to 1 page wide, auto high
                 
                 # Styles
                 f_title = workbook.add_format({'bold': True, 'font_size': 20, 'align': 'center', 'valign': 'vcenter'})
-                f_header_company = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'left', 'valign': 'top'})
-                f_std = workbook.add_format({'font_size': 10, 'align': 'left', 'valign': 'top'})
-                f_bold = workbook.add_format({'bold': True, 'font_size': 10, 'align': 'left', 'valign': 'top'})
+                f_header_company = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'left'})
+                f_std = workbook.add_format({'font_size': 10, 'align': 'left'})
+                f_bold = workbook.add_format({'bold': True, 'font_size': 10, 'align': 'left'})
                 f_right = workbook.add_format({'font_size': 10, 'align': 'right'})
-                f_table_head = workbook.add_format({'border': 1, 'align': 'center', 'bold': True, 'bg_color': '#F2F2F2', 'font_size': 10})
-                f_border_center = workbook.add_format({'border': 1, 'align': 'center', 'font_size': 10})
-                f_wrap = workbook.add_format({'border': 1, 'text_wrap': True, 'font_size': 10})
-                f_footer_label = workbook.add_format({'left': 1, 'right': 1, 'font_size': 9, 'valign': 'top'})
-                f_footer_last = workbook.add_format({'left': 1, 'right': 1, 'bottom': 1, 'font_size': 9, 'valign': 'top'})
+                f_table_head = workbook.add_format({'border': 1, 'align': 'center', 'bold': True, 'bg_color': '#F2F2F2'})
+                f_border_center = workbook.add_format({'border': 1, 'align': 'center'})
+                f_wrap = workbook.add_format({'border': 1, 'text_wrap': True})
+                f_footer = workbook.add_format({'border': 1, 'font_size': 9, 'valign': 'top'})
 
-                worksheet.set_paper(9); worksheet.set_margins(0.3, 0.3, 0.3, 0.3)
-                worksheet.set_column('A:A', 8); worksheet.set_column('B:B', 15); worksheet.set_column('C:C', 40)
-                worksheet.set_column('D:D', 15); worksheet.set_column('E:E', 22)
+                # Adjust column widths for A4
+                worksheet.set_column('A:A', 6)  # No.
+                worksheet.set_column('B:B', 14) # Code
+                worksheet.set_column('C:C', 38) # Product Name
+                worksheet.set_column('D:D', 12) # Unit
+                worksheet.set_column('E:E', 10) # QTY
                 
                 curr = 0; page_breaks = []; do_count = 0 
                 for store_code in df_clean['รหัสสาขา'].unique():
@@ -112,43 +119,33 @@ if uploaded_file:
                     if do_count > 0: page_breaks.append(curr)
                     first_row = df_store.iloc[0]
                     
-                    # --- Header Section (แก้จุดทับซ้อน) ---
+                    # --- Header Section ---
                     worksheet.write(curr, 0, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_header_company)
-                    # แก้ไข A2: ลดการ Merge เหลือแค่ A-B (0-1) เพื่อไม่ให้ทับคอลัมน์ C (2)
                     worksheet.merge_range(curr + 1, 0, curr + 1, 1, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
                     worksheet.write(curr + 2, 0, 'จังหวัดสมุทรปราการ 10540', f_std)
-                    
-                    # บรรทัดติดต่อ: Merge A ถึง D (0-3) ได้ เพราะฝั่งขวา (E) เริ่มที่ index 4
                     worksheet.merge_range(curr + 3, 0, curr + 3, 3, 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', f_std)
                     
                     worksheet.write(curr + 4, 0, 'Customer Name', f_std)
-                    worksheet.merge_range(curr + 5, 0, curr + 5, 1, f'Store Code: {store_code}', f_bold)
-                    worksheet.merge_range(curr + 6, 0, curr + 6, 1, f'Store Name: {first_row["Store Name"]}', f_bold)
+                    
+                    # แก้ไข Store Name: Merge A ถึง D เพื่อให้แสดงชื่อยาวได้ครบ
+                    worksheet.merge_range(curr + 5, 0, curr + 5, 3, f'Store Code: {store_code}', f_bold)
+                    worksheet.merge_range(curr + 6, 0, curr + 6, 3, f'Store Name: {first_row["Store Name"]}', f_bold)
                     worksheet.merge_range(curr + 7, 0, curr + 7, 3, f'Ship To: {first_row["ที่อยู่"]}', f_std)
 
-                    # --- Center Section (แก้จุดทับซ้อน) ---
-                    # หัวข้อใหญ่เริ่มที่คอลัมน์ C (index 2) ถึง D (index 3) เพื่อหลบที่อยู่ฝั่งซ้าย
+                    # --- Center & Right (Title & Info) ---
                     worksheet.merge_range(curr + 1, 2, curr + 2, 3, 'ใบส่งสินค้าชั่วคราว', f_title)
-                    
-                    # --- Right Section (Column E = index 4) ---
                     worksheet.write(curr, 4, f'Do. No. {first_row["เลขที่ DO."]}', f_right)
                     worksheet.write(curr + 1, 4, f'Ref. Po. {first_row["เลขที่ PO."]}', f_right)
-                    worksheet.write(curr + 2, 4, 'Ref. Po. -', f_right)
-                    worksheet.write(curr + 3, 4, 'Ref. Po. -', f_right)
                     
-                    # ดึงข้อมูล Cut Off Date
                     cutoff_val = first_row.get('Cut Off Date', first_row.get('Cutoff', '-'))
-                    if pd.isna(cutoff_val): cutoff_val = '-'
                     worksheet.write(curr + 4, 4, f'Cut Off Date: {cutoff_val}', f_right)
-                    
                     worksheet.write(curr + 5, 4, f'Zone {first_row["โซน"]}', f_right)
                     
-                    # Delivery Date
                     del_date = str(first_row["Delivery Date"]).split(' ')[0]
                     worksheet.write(curr + 7, 4, f'Delivery Date: {del_date}', f_right)
 
                     # --- Table Section ---
-                    h_row = curr + 10
+                    h_row = curr + 9
                     for col, text in enumerate(['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']):
                         worksheet.write(h_row, col, text, f_table_head)
 
@@ -172,16 +169,14 @@ if uploaded_file:
                     f_row += 1
                     labels = ['ชื่อ (ตัวบรรจง):', 'วันที่:', 'เวลา:', 'หมายเหตุ:']
                     for idx, label in enumerate(labels):
-                        fmt = f_footer_label if idx < len(labels)-1 else f_footer_last
-                        if idx == 0: worksheet.set_row(f_row, 28)
-                        worksheet.merge_range(f_row, 0, f_row, 1, label, fmt)
-                        worksheet.merge_range(f_row, 2, f_row, 3, label, fmt)
-                        worksheet.write(f_row, 4, label, fmt)
+                        worksheet.merge_range(f_row, 0, f_row, 1, label, f_footer)
+                        worksheet.merge_range(f_row, 2, f_row, 3, label, f_footer)
+                        worksheet.write(f_row, 4, label, f_footer)
                         f_row += 1
 
-                    curr = f_row + 4; do_count += 1
+                    curr = f_row + 2; do_count += 1
 
                 if page_breaks: worksheet.set_h_pagebreaks(page_breaks)
 
-            st.success("✅ แก้ไข Error Overlapping เรียบร้อยแล้ว!")
-            st.download_button(label="📥 ดาวน์โหลดไฟล์ DO Master", data=output_do.getvalue(), file_name=f"DO_Fixed_V8.3.xlsx")
+            st.success("✅ จัดเลย์เอาต์ A4 และแก้ไขการแสดงผลชื่อร้านเรียบร้อยแล้ว!")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์ DO Master V8.4", data=output_do.getvalue(), file_name=f"DO_Final_A4_V8.4.xlsx")
