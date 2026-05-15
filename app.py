@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="DO System V8.9 Pixel Perfect", layout="wide")
+st.set_page_config(page_title="DO System V9.0 Master", layout="wide")
 
-st.title("📦 ระบบจัดการขนส่ง (V8.9 Precision Fix)")
+st.title("📦 ระบบจัดการขนส่ง (V9.0 Pixel-Perfect)")
 st.markdown("---")
 
 if 'name_memory' not in st.session_state:
@@ -15,9 +15,8 @@ uploaded_file = st.file_uploader("อัปโหลดไฟล์ Excel (Trans
 if uploaded_file:
     df_raw = pd.read_excel(uploaded_file, sheet_name='Transport')
     
-    tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์", "📄 2. ออกใบส่งสินค้า (V8.9)"])
+    tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์", "📄 2. ออกใบส่งสินค้า (V9.0 Master)"])
 
-    # --- TAB 1: ระบบแยกซัพพลายเออร์ ---
     with tab1:
         df_split = df_raw.dropna(subset=['ซัพพลายเออร์'])
         unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
@@ -35,25 +34,24 @@ if uploaded_file:
                         st.session_state['name_memory'][supplier] = sheet_name
                         df_sup = df_split[df_split['ซัพพลายเออร์'] == supplier].copy()
                         df_sup.to_excel(writer, sheet_name=sheet_name, index=False)
-                st.download_button("📥 ดาวน์โหลดไฟล์แยกชีต", output_split.getvalue(), "Supplier_Split.xlsx")
+                st.download_button("📥 ดาวน์โหลด", output_split.getvalue(), "Supplier_Split.xlsx")
 
-    # --- TAB 2: ออกใบ DO (V8.9 แก้ไขขนาด Pixel คอลัมน์ B) ---
     with tab2:
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
-        if st.button("🚀 สร้างใบส่งสินค้า V8.9"):
+        if st.button("🚀 สร้างใบส่งสินค้า V9.0"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
                 worksheet = workbook.add_worksheet("DO_Master")
                 
-                # Setup A4 & Column Widths (B = 250 pixel approx)
+                # Setup A4 & Column Widths (B = 250 pixels precision)
                 worksheet.set_paper(9) 
                 worksheet.set_margins(0.3, 0.3, 0.3, 0.3)
-                worksheet.set_column('A:A', 8)   # No.
-                worksheet.set_column('B:B', 33)  # แก้ไข: ขยายเป็น ~250 pixel เพื่อให้ที่อยู่ครบ
-                worksheet.set_column('C:C', 40)  # Title Center
-                worksheet.set_column('D:D', 15)  # Labels
-                worksheet.set_column('E:E', 20)  # Data
+                worksheet.set_column('A:A', 8)    # No.
+                worksheet.set_column('B:B', 35)   # FIXED: 250 pixels width for address clarity
+                worksheet.set_column('C:C', 45)   # Title / Name
+                worksheet.set_column('D:D', 15)   # Labels
+                worksheet.set_column('E:E', 20)   # Data
                 
                 # Styles
                 f_comp = workbook.add_format({'bold': True, 'font_size': 14})
@@ -73,10 +71,10 @@ if uploaded_file:
                     if curr > 0: page_breaks.append(curr)
                     first = df_store.iloc[0]
 
-                    # --- Header Section ---
+                    # Header Section
                     worksheet.merge_range(curr, 0, curr, 4, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_comp)
                     
-                    worksheet.set_row(curr+1, 40) # ความสูงแถวหัวเรื่อง
+                    worksheet.set_row(curr+1, 40)
                     worksheet.merge_range(curr+1, 0, curr+1, 1, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
                     worksheet.write(curr+1, 2, 'ใบส่งสินค้าชั่วคราว', f_title)
                     worksheet.write(curr+1, 3, 'Do. No.', f_right)
@@ -87,9 +85,9 @@ if uploaded_file:
                     worksheet.write(curr+2, 4, str(first["เลขที่ PO."]), f_std)
 
                     worksheet.merge_range(curr+3, 0, curr+3, 2, 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', f_std)
-                    worksheet.write(curr+4, 0, 'Customer Name', f_std) # ลบจุดออกตามสั่ง
+                    worksheet.write(curr+4, 0, 'Customer Name', f_std) # NO DOTS
 
-                    # จัดการรูปแบบวันที่ (ไม่เอาเวลา)
+                    # Date Cleanup (No Time)
                     cutoff = pd.to_datetime(first.get('Cut Off Date')).strftime('%d/%m/%Y') if pd.notnull(first.get('Cut Off Date')) else "-"
                     delivery = pd.to_datetime(first["Delivery Date"]).strftime('%d/%m/%Y') if pd.notnull(first["Delivery Date"]) else "-"
                     
@@ -105,7 +103,7 @@ if uploaded_file:
                     worksheet.write(curr+7, 3, 'Delivery Date:', f_right)
                     worksheet.write(curr+7, 4, delivery, f_bold)
 
-                    # --- Table Section ---
+                    # Table Section
                     t_h = curr + 9
                     for i, txt in enumerate(['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']):
                         worksheet.write(t_h, i, txt, f_table_h)
@@ -122,7 +120,7 @@ if uploaded_file:
                     worksheet.merge_range(r_ptr, 0, r_ptr, 3, 'Total', f_table_h)
                     worksheet.write(r_ptr, 4, df_store['จำนวน'].sum(), f_border)
 
-                    # --- Footer Section ---
+                    # Footer Section
                     f_row = r_ptr + 1
                     worksheet.merge_range(f_row, 0, f_row, 1, 'ผู้รับสินค้า', f_footer_h)
                     worksheet.merge_range(f_row, 2, f_row, 3, 'ผู้ส่งสินค้า / ทะเบียนรถ', f_footer_h)
@@ -139,5 +137,5 @@ if uploaded_file:
                 worksheet.set_h_pagebreaks(page_breaks)
                 worksheet.fit_to_pages(1, 0)
 
-            st.success("✅ แก้ไขที่อยู่ครบถ้วนและปรับขนาดคอลัมน์ B เป็น 250px เรียบร้อยครับ!")
-            st.download_button("📥 ดาวน์โหลด DO Master V8.9", output_do.getvalue(), "DO_Final_V8.9.xlsx")
+            st.success("✅ V9.0 Master Fix: ทุกอย่างเป๊ะตามต้นฉบับแล้วครับ!")
+            st.download_button("📥 ดาวน์โหลด DO Final V9.0", output_do.getvalue(), "DO_Final_V9.0.xlsx")
