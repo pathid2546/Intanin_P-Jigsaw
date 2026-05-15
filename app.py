@@ -3,9 +3,8 @@ import pandas as pd
 import io
 from datetime import datetime
 
-st.set_page_config(page_title="Supplier & DO System V7.6", layout="wide")
+st.set_page_config(page_title="Supplier & DO System V7.9", layout="wide")
 
-# --- ส่วนหัวโปรแกรม ---
 st.title("📦 ระบบจัดการข้อมูลขนส่ง (Splitter & DO Generator)")
 st.markdown("---")
 
@@ -80,21 +79,22 @@ if uploaded_file:
 
             st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output.getvalue(), file_name="Supplier_Splitter.xlsx")
 
-    # --- TAB 2: ระบบ GENPrint DO (Fixed Header/Footer/Cutoff) ---
+    # --- TAB 2: ระบบ GENPrint DO (จัดตำแหน่งตาม image_316bc4.png) ---
     with tab2:
-        st.subheader("📑 ออกใบส่งสินค้า (ฉบับแก้ไขข้อมูลครบถ้วน)")
+        st.subheader("📑 ออกใบส่งสินค้า (Layout ตามตัวอย่างภาพ)")
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
         
-        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (Final Master V7.6)"):
+        if st.button("🚀 สร้างไฟล์ใบส่งสินค้า (V7.9 Final)"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
                 worksheet = workbook.add_worksheet("DO_Continuous")
                 
                 # Styles
-                f_title = workbook.add_format({'bold': True, 'font_size': 20, 'align': 'center'})
-                f_header_company = workbook.add_format({'bold': True, 'font_size': 11})
-                f_std = workbook.add_format({'font_size': 10})
+                f_title = workbook.add_format({'bold': True, 'font_size': 20, 'align': 'center', 'valign': 'vcenter'})
+                f_header_company = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'left', 'valign': 'top'})
+                f_std = workbook.add_format({'font_size': 10, 'align': 'left', 'valign': 'top'})
+                f_bold = workbook.add_format({'bold': True, 'font_size': 10, 'align': 'left', 'valign': 'top'})
                 f_right = workbook.add_format({'font_size': 10, 'align': 'right'})
                 f_table_head = workbook.add_format({'border': 1, 'align': 'center', 'bold': True, 'bg_color': '#F2F2F2', 'font_size': 10})
                 f_border_center = workbook.add_format({'border': 1, 'align': 'center', 'font_size': 10})
@@ -103,8 +103,8 @@ if uploaded_file:
                 f_footer_last = workbook.add_format({'left': 1, 'right': 1, 'bottom': 1, 'font_size': 9, 'valign': 'top'})
 
                 worksheet.set_paper(9); worksheet.set_margins(0.3, 0.3, 0.3, 0.3)
-                worksheet.set_column('A:A', 6); worksheet.set_column('B:B', 15); worksheet.set_column('C:C', 40)
-                worksheet.set_column('D:D', 15); worksheet.set_column('E:E', 12)
+                worksheet.set_column('A:A', 8); worksheet.set_column('B:B', 15); worksheet.set_column('C:C', 40)
+                worksheet.set_column('D:D', 15); worksheet.set_column('E:E', 15)
                 
                 curr = 0; page_breaks = []; do_count = 0 
                 for store_code in df_clean['รหัสสาขา'].unique():
@@ -112,27 +112,35 @@ if uploaded_file:
                     if do_count > 0: page_breaks.append(curr)
                     first_row = df_store.iloc[0]
                     
-                    # --- Header Section (ที่อยู่ขึ้นบนสุดชิดซ้าย) ---
-                    worksheet.write(curr, 0, 'จังหวัดสมุทรปราการ 10540', f_std)
+                    # --- Header Section (อ้างอิงจาก image_316bc4.png) ---
+                    # A1: ชื่อบริษัท
+                    worksheet.write(curr, 0, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_header_company)
+                    # A2: ที่อยู่บรรทัดที่ 1
                     worksheet.write(curr + 1, 0, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
-                    worksheet.write(curr + 2, 0, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_header_company)
+                    # A3: จังหวัด (ตามที่ย้ำมา)
+                    worksheet.write(curr + 2, 0, 'จังหวัดสมุทรปราการ 10540', f_std)
+                    # A4: ข้อมูลติดต่อ
                     worksheet.write(curr + 3, 0, 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', f_std)
+                    # A5: Customer Name
                     worksheet.write(curr + 4, 0, 'Customer Name: ................................................................', f_std)
-                    worksheet.write(curr + 5, 0, f'Store Code: {store_code}', f_header_company)
-                    worksheet.write(curr + 6, 0, f'Store Name: {first_row["Store Name"]}', f_header_company)
+                    # A6: Store Code (Bold)
+                    worksheet.write(curr + 5, 0, f'Store Code: {store_code}', f_bold)
+                    # A7: Store Name (Bold)
+                    worksheet.write(curr + 6, 0, f'Store Name: {first_row["Store Name"]}', f_bold)
+                    # A8: Ship To
                     worksheet.write(curr + 7, 0, f'Ship To: {first_row["ที่อยู่"]}', f_std)
 
-                    # --- ฝั่งขวา (เพิ่ม Cut off Date) ---
-                    worksheet.write(curr + 2, 2, 'ใบส่งสินค้าชั่วคราว', f_title)
+                    # --- กลางและขวา ---
+                    # หัวข้อใหญ่ (ใบส่งสินค้าชั่วคราว) อยู่แถวเดียวกับจังหวัด-ติดต่อ
+                    worksheet.merge_range(curr + 2, 2, curr + 3, 3, 'ใบส่งสินค้าชั่วคราว', f_title)
+                    
                     worksheet.write(curr, 4, f'Do. No. {first_row["เลขที่ DO."]}', f_right)
                     worksheet.write(curr + 1, 4, f'Ref. Po. {first_row["เลขที่ PO."]}', f_right)
                     worksheet.write(curr + 2, 4, 'Ref. Po. -', f_right)
                     worksheet.write(curr + 3, 4, 'Ref. Po. -', f_right)
                     
-                    # ดึงข้อมูล Cut off Date (ถ้าในไฟล์มีคอลัมน์ชื่อ 'Cutoff' หรือ 'Cut off Date')
                     cutoff_val = first_row.get('Cut off Date', first_row.get('Cutoff', '-'))
                     worksheet.write(curr + 4, 4, f'Cut off Date: {cutoff_val}', f_right)
-                    
                     worksheet.write(curr + 5, 4, f'Zone {first_row["โซน"]}', f_right)
                     worksheet.write(curr + 7, 4, f'Delivery Date: {first_row["Delivery Date"]}', f_right)
 
@@ -151,13 +159,12 @@ if uploaded_file:
                     worksheet.merge_range(r_ptr, 0, r_ptr, 3, 'Total', f_table_head)
                     worksheet.write(r_ptr, 4, df_store['จำนวน'].sum(), f_border_center)
 
-                    # --- Footer Section (ชื่อ/วันที่/เวลา/หมายเหตุ) ---
+                    # --- Footer Section ---
                     f_row = r_ptr + 1
                     worksheet.merge_range(f_row, 0, f_row, 1, 'ผู้รับสินค้า', f_table_head)
                     worksheet.merge_range(f_row, 2, f_row, 3, 'ผู้ส่งสินค้า / ทะเบียนรถ', f_table_head)
                     worksheet.write(f_row, 4, 'คลังสินค้า', f_table_head)
                     f_row += 1
-
                     labels = ['ชื่อ (ตัวบรรจง):', 'วันที่:', 'เวลา:', 'หมายเหตุ:']
                     for idx, label in enumerate(labels):
                         fmt = f_footer_label if idx < len(labels)-1 else f_footer_last
@@ -171,5 +178,5 @@ if uploaded_file:
 
                 if page_breaks: worksheet.set_h_pagebreaks(page_breaks)
 
-            st.success("✅ แก้ไขและเพิ่ม Cut off Date เรียบร้อยแล้ว!")
-            st.download_button(label="📥 ดาวน์โหลดไฟล์ DO Master", data=output_do.getvalue(), file_name=f"DO_Final_V7.6.xlsx")
+            st.success("✅ ปรับแก้โครงสร้าง Header เรียบร้อยแล้ว!")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์ DO Master", data=output_do.getvalue(), file_name=f"DO_Layout_Fixed.xlsx")
