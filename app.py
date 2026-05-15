@@ -3,7 +3,7 @@ import pandas as pd
 import io
 import time
 
-# --- 1. CONFIG & OFFICIAL CSS (Shell UI เท่านั้น ไม่แตะ Logic) ---
+# --- CONFIG & OFFICIAL CSS (Shell UI) ---
 st.set_page_config(page_title="Intanin Receipt Convert", layout="wide", page_icon="📦")
 
 st.markdown("""
@@ -14,39 +14,30 @@ st.markdown("""
     /* Skeleton Loading CSS */
     @keyframes skeleton-loading { 0% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
     .skeleton { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: skeleton-loading 1.5s infinite; border-radius: 8px; margin-bottom: 10px; }
-    .skeleton-text { height: 20px; width: 80%; }
-    .skeleton-title { height: 40px; width: 40%; }
-
-    .main-header { padding: 1.5rem; border-bottom: 3px solid #2e7d32; margin-bottom: 2rem; background-color: transparent; }
+    
+    .main-header { padding: 1.5rem; border-bottom: 3px solid #2e7d32; margin-bottom: 2rem; }
     </style>
     """, unsafe_allow_html=True)
 
-# Header โปรเจกต์ใหม่
 st.markdown("""
     <div class="main-header">
         <h1 style='text-align: center;'>🚛 Intanin Receipt Convert</h1>
-        <p style='text-align: center; color: #666;'>Logistics Management System (Core V12.4)</p>
+        <p style='text-align: center; color: #666;'>Official Logistics System (V12.8 - Fixed Column Width)</p>
     </div>
     """, unsafe_allow_html=True)
 
-# ระบบจำชื่อใน Memory (V12.4)
 if 'name_memory' not in st.session_state:
     st.session_state['name_memory'] = {}
 
 uploaded_file = st.file_uploader("📂 อัปโหลดไฟล์ Excel (Transport)", type=['xlsx'])
 
 if uploaded_file:
-    # แสดง Skeleton Loading ก่อนเข้าสู่โหมดทำงาน
-    with st.empty():
-        st.markdown('<div class="skeleton skeleton-title"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="skeleton skeleton-text"></div>', unsafe_allow_html=True)
+    with st.spinner('กำลังประมวลผลไฟล์...'):
         df_raw = pd.read_excel(uploaded_file, sheet_name='Transport')
-        time.sleep(0.5) # สั้นๆ เพื่อ UX
-        st.write("")
-
+    
     tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์ (Full Option)", "📄 2. ออกใบส่งสินค้า (V11.0 Clean)"])
 
-    # --- TAB 1: Logic V12.4 เดิม 100% ---
+    # --- TAB 1: ระบบแยกซัพพลายเออร์ (ปรับความกว้างคอลัมน์ฝั่งขวาให้เท่ากับซ้าย) ---
     with tab1:
         df_split = df_raw.dropna(subset=['ซัพพลายเออร์'])
         unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
@@ -76,8 +67,10 @@ if uploaded_file:
                     df_sup = df_split[df_split['ซัพพลายเออร์'] == supplier].copy()
                     worksheet = workbook.add_worksheet(clean_name)
                     
+                    # --- ฝั่งซ้าย ---
                     left_headers = ['รหัสสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
-                    for col, h in enumerate(left_headers): worksheet.write(0, col, h, header_fmt)
+                    for col, h in enumerate(left_headers): 
+                        worksheet.write(0, col, h, header_fmt)
 
                     curr_row = 1
                     for (branch, zone), b_group in df_sup.groupby(['รหัสสาขา', 'โซน'], sort=False):
@@ -94,9 +87,11 @@ if uploaded_file:
                     worksheet.write(curr_row, 0, "Grand Total", total_fmt)
                     worksheet.write(curr_row, 6, df_sup['จำนวน'].sum(), total_fmt)
                     
+                    # --- ฝั่งขวา (คอลัมน์ J เป็นต้นไป) ---
                     col_offset = 9
                     right_headers = ['ซัพพลายเออร์', 'รหัสสินค้า', 'รายการสินค้า', 'Total']
-                    for col, h in enumerate(right_headers): worksheet.write(0, col_offset + col, h, header_fmt)
+                    for col, h in enumerate(right_headers): 
+                        worksheet.write(0, col_offset + col, h, header_fmt)
                     
                     right_summary = df_sup.groupby(['รหัสสินค้า', 'รายการสินค้า'], as_index=False)['จำนวน'].sum()
                     for i, row in right_summary.iterrows():
@@ -109,15 +104,24 @@ if uploaded_file:
                     worksheet.write(sum_row, col_offset, f"{supplier} Total", total_fmt)
                     worksheet.write(sum_row, col_offset + 3, right_summary['จำนวน'].sum(), total_fmt)
                     
-                    worksheet.set_column('A:G', 15); worksheet.set_column('D:D', 35); worksheet.set_column('L:L', 35)
+                    # ตั้งค่าความกว้างคอลัมน์ (ปรับให้สมมาตรกันทั้งซ้ายและขวา)
+                    worksheet.set_column('A:B', 15)
+                    worksheet.set_column('C:C', 15)  # รหัสสินค้า (ซ้าย)
+                    worksheet.set_column('D:D', 35)  # รายการสินค้า (ซ้าย)
+                    worksheet.set_column('E:G', 15)
+                    
+                    worksheet.set_column('J:J', 15)
+                    worksheet.set_column('K:K', 15)  # รหัสสินค้า (ขวา) -> ปรับให้เท่ากับ C
+                    worksheet.set_column('L:L', 35)  # รายการสินค้า (ขวา) -> ปรับให้เท่ากับ D
+                    worksheet.set_column('M:M', 15)
 
-            st.success("✅ ประมวลผลสำเร็จ!")
-            st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter (V12.7)", data=output_split.getvalue(), file_name="Intanin_Splitter_V12.7.xlsx")
+            st.success("✅ ปรับขนาดคอลัมน์เรียบร้อย!")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output_split.getvalue(), file_name="Intanin_Splitter_V12.8.xlsx")
 
-    # --- TAB 2: Logic V12.4 เดิม 100% ---
+    # --- TAB 2: ออกใบ DO (Logic 12.4 เดิม) ---
     with tab2:
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
-        if st.button("🚀 สร้างใบส่งสินค้า Official V12.7"):
+        if st.button("🚀 สร้างใบส่งสินค้า Official V12.8"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
@@ -174,5 +178,5 @@ if uploaded_file:
                     curr = f_row + 2
                 worksheet.set_h_pagebreaks(page_breaks); worksheet.fit_to_pages(1, 0)
 
-            st.success("✅ V12.7 (Core V12.4) พร้อมดาวน์โหลด!")
-            st.download_button("📥 ดาวน์โหลด DO V12.7", output_do.getvalue(), "Intanin_DO_Final_V12.7.xlsx")
+            st.success("✅ สร้างไฟล์ DO สำเร็จ!")
+            st.download_button("📥 ดาวน์โหลด DO Master", output_do.getvalue(), "Intanin_DO_Final_V12.8.xlsx")
