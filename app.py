@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="DO System V8.8 Master", layout="wide")
+st.set_page_config(page_title="DO System V8.9 Pixel Perfect", layout="wide")
 
-st.title("📦 ระบบจัดการขนส่ง (V8.8 Final Master Fix)")
+st.title("📦 ระบบจัดการขนส่ง (V8.9 Precision Fix)")
 st.markdown("---")
 
 if 'name_memory' not in st.session_state:
@@ -15,9 +15,9 @@ uploaded_file = st.file_uploader("อัปโหลดไฟล์ Excel (Trans
 if uploaded_file:
     df_raw = pd.read_excel(uploaded_file, sheet_name='Transport')
     
-    tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์", "📄 2. ออกใบส่งสินค้า (A4 Fix)"])
+    tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์", "📄 2. ออกใบส่งสินค้า (V8.9)"])
 
-    # --- TAB 1: ระบบแยกซัพพลายเออร์ (คงไว้ครบถ้วน) ---
+    # --- TAB 1: ระบบแยกซัพพลายเออร์ ---
     with tab1:
         df_split = df_raw.dropna(subset=['ซัพพลายเออร์'])
         unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
@@ -37,23 +37,23 @@ if uploaded_file:
                         df_sup.to_excel(writer, sheet_name=sheet_name, index=False)
                 st.download_button("📥 ดาวน์โหลดไฟล์แยกชีต", output_split.getvalue(), "Supplier_Split.xlsx")
 
-    # --- TAB 2: ออกใบ DO (แก้ปัญหาตามจุดที่คุณทักท้วง) ---
+    # --- TAB 2: ออกใบ DO (V8.9 แก้ไขขนาด Pixel คอลัมน์ B) ---
     with tab2:
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
-        if st.button("🚀 สร้างใบส่งสินค้า V8.8"):
+        if st.button("🚀 สร้างใบส่งสินค้า V8.9"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
                 worksheet = workbook.add_worksheet("DO_Master")
                 
-                # Setup A4 & 5-Column Logic
+                # Setup A4 & Column Widths (B = 250 pixel approx)
                 worksheet.set_paper(9) 
                 worksheet.set_margins(0.3, 0.3, 0.3, 0.3)
                 worksheet.set_column('A:A', 8)   # No.
-                worksheet.set_column('B:B', 15)  # Code
-                worksheet.set_column('C:C', 42)  # Title / Name (กว้างพอสำหรับที่อยู่บริษัท)
-                worksheet.set_column('D:D', 15)  # Label
-                worksheet.set_column('E:E', 18)  # Data
+                worksheet.set_column('B:B', 33)  # แก้ไข: ขยายเป็น ~250 pixel เพื่อให้ที่อยู่ครบ
+                worksheet.set_column('C:C', 40)  # Title Center
+                worksheet.set_column('D:D', 15)  # Labels
+                worksheet.set_column('E:E', 20)  # Data
                 
                 # Styles
                 f_comp = workbook.add_format({'bold': True, 'font_size': 14})
@@ -73,33 +73,29 @@ if uploaded_file:
                     if curr > 0: page_breaks.append(curr)
                     first = df_store.iloc[0]
 
-                    # --- Row 1: ชื่อบริษัท ---
+                    # --- Header Section ---
                     worksheet.merge_range(curr, 0, curr, 4, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_comp)
                     
-                    # --- Row 2: ที่อยู่ (แก้ให้แสดงครบ), ใบส่งสินค้า (ใหญ่), Do. No. ---
-                    worksheet.set_row(curr+1, 40) # เพิ่มความสูงแถว 2
-                    worksheet.merge_range(curr+1, 0, curr+1, 1, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std) # Merge A-B
+                    worksheet.set_row(curr+1, 40) # ความสูงแถวหัวเรื่อง
+                    worksheet.merge_range(curr+1, 0, curr+1, 1, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
                     worksheet.write(curr+1, 2, 'ใบส่งสินค้าชั่วคราว', f_title)
                     worksheet.write(curr+1, 3, 'Do. No.', f_right)
                     worksheet.write(curr+1, 4, str(first["เลขที่ DO."]), f_std)
 
-                    # --- Row 3: ที่อยู่บรรทัดต่อมา และ Ref. Po. ---
                     worksheet.merge_range(curr+2, 0, curr+2, 1, 'จังหวัดสมุทรปราการ 10540', f_std)
                     worksheet.write(curr+2, 3, 'Ref. Po.', f_right)
                     worksheet.write(curr+2, 4, str(first["เลขที่ PO."]), f_std)
 
-                    # --- Row 4: ข้อมูลติดต่อ และ Customer Name (ลบจุดไข่ปลาออก) ---
                     worksheet.merge_range(curr+3, 0, curr+3, 2, 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', f_std)
-                    worksheet.write(curr+4, 0, 'Customer Name', f_std) # แก้ตามสั่ง: ลบจุดทิ้ง
+                    worksheet.write(curr+4, 0, 'Customer Name', f_std) # ลบจุดออกตามสั่ง
 
-                    # วันที่ (บังคับ Format ไม่เอาเวลา)
+                    # จัดการรูปแบบวันที่ (ไม่เอาเวลา)
                     cutoff = pd.to_datetime(first.get('Cut Off Date')).strftime('%d/%m/%Y') if pd.notnull(first.get('Cut Off Date')) else "-"
                     delivery = pd.to_datetime(first["Delivery Date"]).strftime('%d/%m/%Y') if pd.notnull(first["Delivery Date"]) else "-"
                     
                     worksheet.write(curr+4, 3, 'Cutoff Date:', f_right)
                     worksheet.write(curr+4, 4, cutoff, f_std)
                     
-                    # --- Row 5-7: Store & Delivery ---
                     worksheet.write(curr+5, 0, f'Store Code: {store_code}', f_bold)
                     worksheet.write(curr+5, 3, 'Zone:', f_right)
                     worksheet.write(curr+5, 4, str(first["โซน"]), f_std)
@@ -123,18 +119,16 @@ if uploaded_file:
                         worksheet.write(r_ptr, 4, r['จำนวน'], f_border)
                         r_ptr += 1
                     
-                    # Total
                     worksheet.merge_range(r_ptr, 0, r_ptr, 3, 'Total', f_table_h)
                     worksheet.write(r_ptr, 4, df_store['จำนวน'].sum(), f_border)
 
-                    # --- Footer Section (ปรับให้กว้างเท่ากัน 3 บล็อก) ---
+                    # --- Footer Section ---
                     f_row = r_ptr + 1
                     worksheet.merge_range(f_row, 0, f_row, 1, 'ผู้รับสินค้า', f_footer_h)
                     worksheet.merge_range(f_row, 2, f_row, 3, 'ผู้ส่งสินค้า / ทะเบียนรถ', f_footer_h)
-                    worksheet.write(f_row, 4, 'คลังสินค้า', f_footer_h) # บล็อกทางขวากว้างตาม Column E
+                    worksheet.write(f_row, 4, 'คลังสินค้า', f_footer_h)
                     
-                    labels = ['ชื่อ (ตัวบรรจง):', 'วันที่:', 'เวลา:', 'หมายเหตุ:']
-                    for label in labels:
+                    for label in ['ชื่อ (ตัวบรรจง):', 'วันที่:', 'เวลา:', 'หมายเหตุ:']:
                         f_row += 1
                         worksheet.merge_range(f_row, 0, f_row, 1, label, f_footer_box)
                         worksheet.merge_range(f_row, 2, f_row, 3, label, f_footer_box)
@@ -145,5 +139,5 @@ if uploaded_file:
                 worksheet.set_h_pagebreaks(page_breaks)
                 worksheet.fit_to_pages(1, 0)
 
-            st.success("✅ แก้ไขที่อยู่และ Customer Name เรียบร้อยแล้วครับ!")
-            st.download_button("📥 ดาวน์โหลด DO Master V8.8", output_do.getvalue(), "DO_Final_V8.8.xlsx")
+            st.success("✅ แก้ไขที่อยู่ครบถ้วนและปรับขนาดคอลัมน์ B เป็น 250px เรียบร้อยครับ!")
+            st.download_button("📥 ดาวน์โหลด DO Master V8.9", output_do.getvalue(), "DO_Final_V8.9.xlsx")
