@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="DO System V9.5 Full Data", layout="wide")
+st.set_page_config(page_title="DO System V10.0 Final", layout="wide")
 
-st.title("📦 ระบบจัดการขนส่ง (V9.5 คืนข้อมูลฝั่งขวาครบถ้วน)")
+st.title("📦 ระบบจัดการขนส่ง (V10.0 แก้ไข Delivery Date & Header)")
 st.markdown("---")
 
 if 'name_memory' not in st.session_state:
@@ -15,33 +15,40 @@ uploaded_file = st.file_uploader("อัปโหลดไฟล์ Excel (Trans
 if uploaded_file:
     df_raw = pd.read_excel(uploaded_file, sheet_name='Transport')
     
-    tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์", "📄 2. ออกใบส่งสินค้า (V9.5)"])
+    tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์", "📄 2. ออกใบส่งสินค้า (V10.0)"])
 
     with tab2:
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
-        if st.button("🚀 สร้างใบส่งสินค้า V9.5"):
+        if st.button("🚀 สร้างใบส่งสินค้า V10.0"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
                 worksheet = workbook.add_worksheet("DO_Master")
                 
-                # Setup A4 & Column Widths (B = 250 pixels precision)
+                # Setup A4 & Column Widths (B = 250 pixels)
                 worksheet.set_paper(9) 
                 worksheet.set_margins(0.3, 0.3, 0.3, 0.3)
                 worksheet.set_column('A:A', 8)    
                 worksheet.set_column('B:B', 35)   # 250 pixels
-                worksheet.set_column('C:C', 35)   # Header Center
-                worksheet.set_column('D:D', 18)   # Right Labels
-                worksheet.set_column('E:E', 22)   # Right Data
+                worksheet.set_column('C:C', 35)   
+                worksheet.set_column('D:D', 18)   
+                worksheet.set_column('E:E', 22)   
                 
                 # Styles
                 f_comp = workbook.add_format({'bold': True, 'font_size': 14})
-                f_title = workbook.add_format({'bold': True, 'font_size': 26, 'align': 'center', 'valign': 'vcenter'})
+                f_title = workbook.add_format({'bold': True, 'font_size': 18, 'align': 'center', 'valign': 'vcenter'}) # FIXED: Size 18
                 f_std = workbook.add_format({'font_size': 11})
                 f_bold = workbook.add_format({'bold': True, 'font_size': 11})
                 f_right = workbook.add_format({'font_size': 11, 'align': 'right'})
-                f_deliv_label = workbook.add_format({'bold': True, 'font_size': 14, 'align': 'right'})
-                f_deliv_date = workbook.add_format({'bold': True, 'font_size': 14, 'align': 'center'})
+                
+                # Delivery Date Styles (Vertical Merge & Wrap Text)
+                f_deliv_label = workbook.add_format({
+                    'bold': True, 'font_size': 14, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True
+                })
+                f_deliv_date = workbook.add_format({
+                    'bold': True, 'font_size': 14, 'align': 'center', 'valign': 'vcenter', 'bg_color': '#D9D9D9'
+                })
+
                 f_border = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
                 f_table_h = workbook.add_format({'border': 1, 'align': 'center', 'bold': True, 'bg_color': '#F2F2F2'})
                 f_wrap = workbook.add_format({'border': 1, 'text_wrap': True, 'valign': 'vcenter'})
@@ -59,16 +66,15 @@ if uploaded_file:
                     worksheet.merge_range(curr+1, 0, curr+1, 1, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
                     worksheet.merge_range(curr+2, 0, curr+2, 1, 'จังหวัดสมุทรปราการ 10540', f_std)
                     worksheet.merge_range(curr+3, 0, curr+3, 2, 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', f_std)
-                    worksheet.write(curr+4, 0, 'Customer Name', f_std)
+                    worksheet.write(curr+4, 0, 'Customer Name: ............................................................................', f_std)
                     worksheet.write(curr+5, 0, f'Store Code: {store_code}', f_bold)
                     worksheet.write(curr+6, 0, f'Store Name: {first["Store Name"]}', f_bold)
                     worksheet.write(curr+7, 0, f'Ship To: {first["ที่อยู่"]}', f_std)
 
-                    # --- Center Title ---
-                    worksheet.set_row(curr+1, 40)
+                    # --- Center Title (Size 18) ---
                     worksheet.merge_range(curr+1, 2, curr+2, 2, 'ใบส่งสินค้าชั่วคราว', f_title)
 
-                    # --- Right Data Section (คืนข้อมูลครบถ้วน) ---
+                    # --- Right Data Section (Fixed Layout) ---
                     worksheet.write(curr, 3, 'Do. No.', f_right)
                     worksheet.write(curr, 4, str(first["เลขที่ DO."]), f_std)
                     
@@ -76,25 +82,25 @@ if uploaded_file:
                     worksheet.write(curr+1, 4, str(first["เลขที่ PO."]), f_std)
                     
                     worksheet.write(curr+2, 3, 'Ref. Po.', f_right)
-                    worksheet.write(curr+2, 4, '-', f_std) # ช่อง Ref. Po. เพิ่มเติม
+                    worksheet.write(curr+2, 4, '-', f_std) 
                     
                     worksheet.write(curr+3, 3, 'Ref. Po.', f_right)
-                    worksheet.write(curr+3, 4, '-', f_std) # ช่อง Ref. Po. เพิ่มเติม
-                    
-                    worksheet.write(curr+4, 3, 'Zone:', f_right)
-                    worksheet.write(curr+4, 4, str(first["โซน"]), f_std)
+                    worksheet.write(curr+3, 4, '-', f_std) 
                     
                     cutoff = pd.to_datetime(first.get('Cut Off Date')).strftime('%d/%m/%Y') if pd.notnull(first.get('Cut Off Date')) else "-"
-                    worksheet.write(curr+5, 3, 'Cutoff Date:', f_right)
-                    worksheet.write(curr+5, 4, cutoff, f_std)
+                    worksheet.write(curr+4, 3, 'Cut off Date:', f_right)
+                    worksheet.write(curr+4, 4, cutoff, f_std)
+
+                    worksheet.write(curr+5, 3, 'Zone:', f_right)
+                    worksheet.write(curr+5, 4, str(first["โซน"]), f_std)
                     
-                    # Delivery Date (ล่างสุด ตัวหนาใหญ่)
+                    # Delivery Date (Merge Vertical Row 7-8 & Center)
                     delivery = pd.to_datetime(first["Delivery Date"]).strftime('%d/%m/%Y') if pd.notnull(first["Delivery Date"]) else "-"
-                    worksheet.write(curr+7, 3, 'Delivery Date:', f_deliv_label)
-                    worksheet.write(curr+7, 4, delivery, f_deliv_date)
+                    worksheet.merge_range(curr+7, 3, curr+8, 3, "Delivery\nDate:", f_deliv_label)
+                    worksheet.merge_range(curr+7, 4, curr+8, 4, delivery, f_deliv_date)
 
                     # --- Table Section ---
-                    t_h = curr + 9
+                    t_h = curr + 10 # ขยับลงมา 1 row เพื่อไม่ให้ทับ Delivery Date
                     headers = ['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']
                     for i, txt in enumerate(headers):
                         worksheet.write(t_h, i, txt, f_table_h)
@@ -128,5 +134,5 @@ if uploaded_file:
                 worksheet.set_h_pagebreaks(page_breaks)
                 worksheet.fit_to_pages(1, 0)
 
-            st.success("✅ แก้ไขและคืนข้อมูลฝั่งขวาครบทุกบรรทัดแล้วครับ!")
-            st.download_button("📥 ดาวน์โหลด DO V9.5", output_do.getvalue(), "DO_V9.5_FullData.xlsx")
+            st.success("✅ V10.0 Final Fix: จัด Layout ใหม่ตามที่แนะนำเป๊ะแล้วครับ!")
+            st.download_button("📥 ดาวน์โหลด DO Final V10.0", output_do.getvalue(), "DO_Final_V10.0.xlsx")
