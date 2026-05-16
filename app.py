@@ -2,140 +2,91 @@ import streamlit as st
 import pandas as pd
 import io
 
-# --- CONFIG & APPLE PREMIUM UI CSS ---
-st.set_page_config(page_title="Intanin Convert Pro", layout="wide", page_icon="🍏")
+# --- CONFIG & DYNAMIC SYSTEM UI (Support Dark/Light Mode) ---
+st.set_page_config(page_title="Intanin Receipt Convert", layout="wide", page_icon="📦")
 
-# บรรจุชุดคำสั่ง CSS ดีไซน์ระดับหรูสไตล์ Apple (iOS / macOS)
+# ปรับ CSS ให้ยืดหยุ่นตามโหมดสีของระบบ (Auto Dark/Light)
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700&family=SF+Pro+Display:wght@300;400;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700&display=swap');
     
-    /* สไตล์ฟอนต์หลักผสมผสานระหว่างความสากลและภาษาไทย */
     html, body, [class*="css"] { 
-        font-family: 'SF Pro Display', 'Sarabun', sans-serif; 
-        background-color: #f5f5f7;
-        color: #1d1d1f;
+        font-family: 'Sarabun', sans-serif; 
     }
     
-    /* ส่วนหัวแบบ Glassmorphism หน้าจอกระจกฝ้า */
-    .apple-header { 
-        background: rgba(255, 255, 255, 0.75);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        padding: 2.5rem 1.5rem; 
-        border-radius: 24px;
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.6);
-        margin-bottom: 2.5rem;
+    /* ส่วนหัวคลีนๆ สไตล์ iOS Settings - รองรับ Dark/Light Mode */
+    .bd-header { 
+        background: rgba(128, 128, 128, 0.08);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+        padding: 1.8rem 1rem; 
+        border-radius: 16px;
+        border: 1px solid rgba(128, 128, 128, 0.15);
+        margin-bottom: 2rem;
         text-align: center;
-        transition: all 0.4s ease;
     }
-    .apple-header:hover {
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.06);
-        transform: translateY(-2px);
-    }
-    .apple-title {
-        font-weight: 600;
-        font-size: 2.4rem;
-        letter-spacing: -0.03em;
-        background: linear-gradient(135deg, #1e3c1a 0%, #2e7d32 100%);
+    .bd-title {
+        font-weight: 700;
+        font-size: 2.2rem;
+        letter-spacing: -0.02em;
+        /* ใช้ไล่เฉดสีเขียวที่มองเห็นได้ชัดทั้งบนพื้นขาวและพื้นดำ */
+        background: linear-gradient(135deg, #2e7d32 0%, #4caf50 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        margin-bottom: 0.3rem;
+        margin-bottom: 0.2rem;
     }
-    .apple-subtitle {
-        color: #86868b;
-        font-size: 1rem;
+    .bd-subtitle {
+        color: var(--text-color);
+        opacity: 0.6;
+        font-size: 0.95rem;
         font-weight: 400;
     }
     
-    /* ปรับแต่งรูปแบบการอัปโหลดไฟล์ให้ดูมินิมอล */
-    .stFileUploader {
-        background: #ffffff;
-        padding: 1.5rem;
-        border-radius: 20px;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.02);
-        border: 1px solid #e8e8ed;
-    }
-    
-    /* กล่อง Alert เตือนของความบกพร่องข้อมูล (iOS Style) */
-    .stAlert {
-        border-radius: 16px !important;
-        border: none !important;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.02) !important;
-    }
-    
-    /* ปรับแต่งปุ่มกดดึงดูดสายตาและการตอบสนองแบบสมูท (Micro-interactions) */
+    /* สไตล์ปุ่มกด Micro-interaction แบบพรีเซตสีไม่ทับซ้อนสีฟอนต์ระบบ */
     div.stButton > button, div.stDownloadButton > button {
         background: linear-gradient(180deg, #34c759 0%, #28cd41 100%) !important;
-        color: white !important;
-        border-radius: 12px !important;
+        color: #ffffff !important; /* บังคับให้ปุ่มเป็นสีขาวเสมอเพื่อความชัดเจน */
+        border-radius: 10px !important;
         border: none !important;
-        padding: 0.6rem 2rem !important;
+        padding: 0.5rem 1.8rem !important;
         font-weight: 500 !important;
-        box-shadow: 0 4px 12px rgba(52, 199, 89, 0.2) !important;
-        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        box-shadow: 0 4px 10px rgba(52, 199, 89, 0.15) !important;
+        transition: all 0.2s ease !important;
     }
     div.stButton > button:hover, div.stDownloadButton > button:hover {
-        transform: translateY(-2px) scale(1.02) !important;
-        box-shadow: 0 6px 20px rgba(52, 199, 89, 0.35) !important;
-        background: linear-gradient(180deg, #30b351 0%, #26b93b 100%) !important;
-    }
-    div.stButton > button:active, div.stDownloadButton > button:active {
-        transform: translateY(1px) scale(0.98) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 15px rgba(52, 199, 89, 0.25) !important;
     }
     
-    /* แบบฟอร์มกรอกข้อมูลแบบเรียบหรู */
-    div[data-testid="stForm"] {
-        background: #ffffff !important;
-        border-radius: 20px !important;
-        border: 1px solid #e8e8ed !important;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.02) !important;
-        padding: 2rem !important;
-    }
-    
-    /* การออกแบบแท็บ (Tabs) สไตล์เมนูตั้งค่า iOS */
+    /* ปรับแต่งแท็บให้เข้ากับธีมปัจจุบัน */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background-color: #e3e3e6;
-        padding: 6px;
-        border-radius: 14px;
+        gap: 6px;
+        background-color: rgba(128, 128, 128, 0.12);
+        padding: 4px;
+        border-radius: 12px;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 40px;
-        white-space: pre;
-        background-color: transparent;
-        border-radius: 10px;
-        color: #1d1d1f;
-        font-weight: 500;
+        border-radius: 8px;
+        color: var(--text-color) !important;
         border: none !important;
-        transition: all 0.2s ease;
-    }
-    .stTabs [data-baseweb="tab"]:hover {
-        background-color: rgba(255, 255, 255, 0.4);
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #ffffff !important;
-        box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.08) !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# พ่นส่วนหัวหน้าเว็บแอป (Apple Premium Glass Container)
+# ส่วนหัวฉบับมินิมอลทางการโดยทีม Business Development
 st.markdown("""
-    <div class="apple-header">
-        <div class="apple-title">Intanin Receipt Convert Pro</div>
-        <div class="apple-subtitle">Logistics Automation Engine • Version 15.0 Premium Edition</div>
+    <div class="bd-header">
+        <div class="bd-title">Intanin Receipt Convert</div>
+        <div class="bd-subtitle">Business Development Logistics System</div>
     </div>
     """, unsafe_allow_html=True)
 
 if 'name_memory' not in st.session_state:
     st.session_state['name_memory'] = {}
 
-# ย้ายโซนอัปโหลดไฟล์มาตรงกลางจอแบบหล่อๆ
-uploaded_file = st.file_uploader("📂 Drop your Transport Excel file here or browse", type=['xlsx'])
+uploaded_file = st.file_uploader("📂 อัปโหลดไฟล์ Excel (Transport)", type=['xlsx'])
 
-# ฟังก์ชันทำความสะอาดรหัสและลบเศษ .0 ออกอย่างแม่นยำ
+# ฟังก์ชันจัดการแปลงรูปแบบและลบเศษทศนิยม .0 ออกจากรหัสต่างๆ
 def clean_code_to_str(val):
     if pd.isna(val):
         return ""
@@ -145,7 +96,7 @@ def clean_code_to_str(val):
     return val_str
 
 if uploaded_file:
-    with st.spinner('Reading data securely...'):
+    with st.spinner('กำลังอ่านข้อมูล...'):
         df_raw = pd.read_excel(uploaded_file, sheet_name='Transport')
     
     # ========================================================
@@ -162,8 +113,8 @@ if uploaded_file:
     df_invalid = df_clean_rows[df_clean_rows[name_cutoff].isna() | df_clean_rows[name_delivery].isna()].copy()
     
     if len(df_invalid) > 0:
-        st.markdown("<h3 style='font-size:1.3rem; font-weight:600; color:#ff3b30;'>🔍 Issues Detected (Data Validation)</h3>", unsafe_allow_html=True)
-        st.error(f"พบช่องว่างในคอลัมน์วันที่ ทั้งหมด {len(df_invalid)} แถว ระบบกรองแถวว่างเปล่าออกให้แล้ว")
+        st.markdown("<h4 style='font-weight:600; color:#ff4b4b;'>🔍 ตรวจพบข้อมูลไม่ครบถ้วนในแถวงาน</h4>", unsafe_allow_html=True)
+        st.error(f"พบช่องว่างในคอลัมน์วันที่ ทั้งหมด {len(df_invalid)} แถว (ระบบละเว้นแถวเปล่าท้ายไฟล์ให้แล้ว)")
         
         preview_cols = []
         for c in ['รหัสสาขา', 'Store Name', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', name_cutoff, name_delivery]:
@@ -184,16 +135,16 @@ if uploaded_file:
         st.markdown("---")
     
     # ==========================================
-    # WORKSPACE TABS (iOS Navigation Style)
+    # WORKSPACE TABS
     # ==========================================
-    tab1, tab2 = st.tabs(["✂️ Supplier Splitter", "📄 Delivery Order Master"])
+    tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์ (Supplier Splitter)", "📄 2. ออกใบส่งสินค้า (DO Master)"])
 
     # --- TAB 1: ระบบแยกซัพพลายเออร์ ---
     with tab1:
         df_split = df_raw.dropna(subset=['ซัพพลายเออร์']).copy()
         unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
         
-        st.markdown("<h4 style='font-weight:600; margin-bottom:1rem; color:#1d1d1f;'>📝 Sheet Name Customization</h4>", unsafe_allow_html=True)
+        st.markdown("<h5 style='font-weight:600; margin-bottom:1rem;'>📝 ตั้งชื่อตัวย่อชีตซัพพลายเออร์</h5>", unsafe_allow_html=True)
         with st.form("sheet_name_form"):
             cols = st.columns(3)
             current_mapping = {}
@@ -201,7 +152,7 @@ if uploaded_file:
                 with cols[i % 3]:
                     remembered_name = st.session_state['name_memory'].get(supplier, str(supplier)[:10].strip())
                     current_mapping[supplier] = st.text_input(f"{supplier}:", value=remembered_name, key=f"input_{supplier}")
-            submit_split = st.form_submit_button("Generate Supplier Sheets")
+            submit_split = st.form_submit_button("ประมวลผลแยกซัพพลายเออร์")
 
         if submit_split:
             output_split = io.BytesIO()
@@ -218,7 +169,7 @@ if uploaded_file:
                     df_sup = df_split[df_split['ซัพพลายเออร์'] == supplier].copy()
                     worksheet = workbook.add_worksheet(clean_name)
                     
-                    # ตารางฝั่งซ้าย (8 คอลัมน์ ล็อคโครงสร้าง V13.1+)
+                    # ตารางฝั่งซ้าย (8 คอลัมน์)
                     left_headers = ['รหัสสาขา', 'สาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
                     for col, h in enumerate(left_headers): 
                         worksheet.write(0, col, h, header_fmt)
@@ -242,7 +193,7 @@ if uploaded_file:
                     worksheet.write(curr_row, 0, "Grand Total", total_fmt)
                     worksheet.write(curr_row, 7, df_sup['จำนวน'].sum(), total_fmt)
                     
-                    # ตารางฝั่งขวา (Summary ล็อคระยะห่าง)
+                    # ตารางฝั่งขวา (Summary)
                     col_offset = 10  
                     right_headers = ['ซัพพลายเออร์', 'รหัสสินค้า', 'รายการสินค้า', 'Total']
                     for col, h in enumerate(right_headers): 
@@ -271,14 +222,14 @@ if uploaded_file:
                     worksheet.set_column('M:M', 35)  
                     worksheet.set_column('N:N', 15)  
 
-            st.success("🎉 Splitter conversion ready!")
-            st.download_button(label="📥 Download Splitter Excel", data=output_split.getvalue(), file_name="Intanin_Splitter_Pro.xlsx")
+            st.success("✅ แยกข้อมูลซัพพลายเออร์สำเร็จ!")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์แยกซัพพลายเออร์", data=output_split.getvalue(), file_name="Intanin_Splitter_BD.xlsx")
 
-    # --- TAB 2: ออกใบ DO (แก้ปัญหาทศนิยม .0 ค้างจากรูปตัวอย่างเรียบร้อย) ---
+    # --- TAB 2: ออกใบ DO ---
     with tab2:
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
-        st.markdown("<h4 style='font-weight:600; margin-bottom:1rem; color:#1d1d1f;'>📄 Batch Document Processing</h4>", unsafe_allow_html=True)
-        if st.button("🚀 Compile Official Delivery Orders"):
+        st.markdown("<h5 style='font-weight:600; margin-bottom:1rem;'>📄 ออกใบส่งสินค้าชุดใหญ่ (DO)</h5>", unsafe_allow_html=True)
+        if st.button("🚀 ประมวลผลสร้างใบส่งสินค้า (DO)"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
@@ -349,5 +300,5 @@ if uploaded_file:
                     curr = f_row + 2
                 worksheet.set_h_pagebreaks(page_breaks); worksheet.fit_to_pages(1, 0)
 
-            st.success("🎉 Delivery Orders compiled flawlessly!")
-            st.download_button("📥 Download DO Master Package", output_do.getvalue(), "Intanin_DO_Master_Pro.xlsx")
+            st.success("✅ สร้างใบส่งสินค้าเรียบร้อย รหัสไม่มีจุดทศนิยมกวนใจ!")
+            st.download_button("📥 ดาวน์โหลดไฟล์ DO Master", output_do.getvalue(), "Intanin_DO_BD_Edition.xlsx")
