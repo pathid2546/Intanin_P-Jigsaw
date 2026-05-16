@@ -17,7 +17,7 @@ st.markdown("""
 st.markdown("""
     <div class="main-header">
         <h1 style='text-align: center;'>🚛 Intanin Receipt Convert</h1>
-        <p style='text-align: center; color: #666;'>Official Logistics System (V14.1 - Smart Validation Dashboard)</p>
+        <p style='text-align: center; color: #666;'>Official Logistics System (V14.2 - Ignore Entirely Blank Rows)</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -30,32 +30,35 @@ if uploaded_file:
     with st.spinner('กำลังอ่านข้อมูลจากไฟล์...'):
         df_raw = pd.read_excel(uploaded_file, sheet_name='Transport')
     
-    # ==========================================
-    # 🔍 SYSTEM: DATA VALIDATION & SMART PREVIEW
-    # ==========================================
-    # ตรวจสอบชื่อคอลัมน์ในไฟล์จริง (ป้องกันเรื่องตัวเล็ก-ใหญ่)
-    col_cutoff = [c for c in df_raw.columns if 'cut' in c.lower() and 'off' in c.lower()]
-    col_delivery = [c for c in df_raw.columns if 'deliv' in c.lower() and 'date' in c.lower()]
+    # ========================================================
+    # 🔍 SYSTEM: DATA VALIDATION & SMART PREVIEW (V14.2 FIX)
+    # ========================================================
+    # เคลียร์แถวขยะ: ถ้าแถวนั้นไม่มีข้อมูลเลยสักคอลัมน์ (ว่างทั้งแถว) ให้ลบออกไปก่อน ไม่ต้องเอามาคิดให้รก
+    df_clean_rows = df_raw.dropna(how='all').copy()
+    
+    # ตรวจสอบชื่อคอลัมน์ในไฟล์จริง (กันเรื่องตัวเล็ก-ใหญ่)
+    col_cutoff = [c for c in df_clean_rows.columns if 'cut' in c.lower() and 'off' in c.lower()]
+    col_delivery = [c for c in df_clean_rows.columns if 'deliv' in c.lower() and 'date' in c.lower()]
     
     name_cutoff = col_cutoff[0] if col_cutoff else 'Cut Off Date'
     name_delivery = col_delivery[0] if col_delivery else 'Delivery Date'
     
-    # ค้นหาแถวที่คอลัมน์ Cut Off Date หรือ Delivery Date เป็นค่าว่าง
-    df_invalid = df_raw[df_raw[name_cutoff].isna() | df_raw[name_delivery].isna()].copy()
+    # ค้นหาแถวที่มีข้อมูลสินค้า แต่ "คอลัมน์วันที่" ดันเป็นช่องว่าง
+    df_invalid = df_clean_rows[df_clean_rows[name_cutoff].isna() | df_clean_rows[name_delivery].isna()].copy()
     
-    # ลอจิก: แสดงเฉพาะตอนที่เจอปัญหาเท่านั้น (ถ้าว่างหมด/ไม่มีแถวเสียเลย จะไม่แสดงอะไรเลย)
+    # จะแสดงตัวเตือนก็ต่อเมื่อ เจอแถวที่มีข้อมูลจริงแต่ลืมใส่วันที่เท่านั้น
     if len(df_invalid) > 0:
         st.markdown("### 🔍 ระบบตรวจสอบข้อมูลคอลัมน์ วันที่ (Data Validation)")
         st.error(f"⚠️ พบข้อมูลไม่ครบถ้วน! มีช่องว่างในคอลัมน์วันที่ ทั้งหมด {len(df_invalid)} แถว (กรุณาตรวจสอบตารางพรีวิวด้านล่าง)")
         
-        # เลือกคอลัมน์หลักมาพรีวิวเพื่อให้หาต้นตอใน Excel ได้ง่าย
+        # ดึงคอลัมน์หลักมาพรีวิวให้อ่านง่ายและหาต้นตอใน Excel เจอไวๆ
         preview_cols = []
         for c in ['รหัสสาขา', 'Store Name', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', name_cutoff, name_delivery]:
-            if c in df_raw.columns:
+            if c in df_clean_rows.columns:
                 preview_cols.append(c)
                 
         df_preview = df_invalid[preview_cols].copy()
-        # แปลง Index ให้ตรงกับเลขแถวในโปรแกรม Excel (Excel เริ่มแถวข้อมูลที่ 2)
+        # แปลง Index ให้ตรงกับเลขบรรทัดจริงในโปรแกรม Excel (บวก 2 เพราะ Excel แถวแรกคือหัวตาราง)
         df_preview.index = df_preview.index + 2
         df_preview.index.name = 'แถวใน Excel (Row)'
         
@@ -72,7 +75,7 @@ if uploaded_file:
         df_split = df_raw.dropna(subset=['ซัพพลายเออร์'])
         unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
         
-        st.subheader("📝 定 กำหนดชื่อตัวย่อชีต")
+        st.subheader("📝 กำหนดชื่อตัวย่อชีต")
         with st.form("sheet_name_form"):
             cols = st.columns(3)
             current_mapping = {}
@@ -145,17 +148,17 @@ if uploaded_file:
                     
                     # ความกว้างคอลัมน์ฝั่งขวา (K - N) บังคับให้ขนาดคอลัมน์รหัสและสินค้าเท่ากันเป๊ะ
                     worksheet.set_column('K:K', 15)  
-                    worksheet.set_column('L:L', 15)  # รหัสสินค้า ขวา = 15 เท่ากับคอลัมน์ D
-                    worksheet.set_column('M:M', 35)  # รายการสินค้า ขวา = 35 เท่ากับคอลัมน์ E
+                    worksheet.set_column('L:L', 15)  
+                    worksheet.set_column('M:M', 35)  
                     worksheet.set_column('N:N', 15)  
 
             st.success("✅ ประมวลผลแยกซัพพลายเออร์สำเร็จ!")
-            st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter V14.1", data=output_split.getvalue(), file_name="Intanin_Splitter_V14.1.xlsx")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter V14.2", data=output_split.getvalue(), file_name="Intanin_Splitter_V14.2.xlsx")
 
     # --- TAB 2: ออกใบ DO (โครงสร้างคงเดิมร้อยเปอร์เซ็นต์) ---
     with tab2:
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
-        if st.button("🚀 สร้างใบส่งสินค้า Official V14.1"):
+        if st.button("🚀 สร้างใบส่งสินค้า Official V14.2"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
@@ -218,4 +221,4 @@ if uploaded_file:
                 worksheet.set_h_pagebreaks(page_breaks); worksheet.fit_to_pages(1, 0)
 
             st.success("✅ สร้างไฟล์ DO สำเร็จ!")
-            st.download_button("📥 ดาวน์โหลด DO Master", output_do.getvalue(), "Intanin_DO_Final_V14.1.xlsx")
+            st.download_button("📥 ดาวน์โหลด DO Master", output_do.getvalue(), "Intanin_DO_Final_V14.2.xlsx")
