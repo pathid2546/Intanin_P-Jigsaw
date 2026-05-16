@@ -17,7 +17,7 @@ st.markdown("""
 st.markdown("""
     <div class="main-header">
         <h1 style='text-align: center;'>🚛 Intanin Receipt Convert</h1>
-        <p style='text-align: center; color: #666;'>Official Logistics System (V14.2 - Ignore Entirely Blank Rows)</p>
+        <p style='text-align: center; color: #666;'>Official Logistics System (V14.3 - Fixed Product Code Data Type)</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -26,14 +26,24 @@ if 'name_memory' not in st.session_state:
 
 uploaded_file = st.file_uploader("📂 อัปโหลดไฟล์ Excel (Transport)", type=['xlsx'])
 
+# ฟังก์ชันผู้ช่วย: สำหรับเคลียร์พวก .0 ทิ้งและทำความสะอาดรหัสต่างๆ
+def clean_code_to_str(val):
+    if pd.isna(val):
+        return ""
+    val_str = str(val).strip()
+    if val_str.endswith('.0'):
+        val_str = val_str[:-2]
+    return val_str
+
 if uploaded_file:
     with st.spinner('กำลังอ่านข้อมูลจากไฟล์...'):
+        # บังคับอ่านคอลัมน์รหัสให้เป็น string หรือใช้ความสะอาดขั้นต้นเพื่อป้องกันการเพี้ยนแต่แรก
         df_raw = pd.read_excel(uploaded_file, sheet_name='Transport')
     
     # ========================================================
-    # 🔍 SYSTEM: DATA VALIDATION & SMART PREVIEW (V14.2 FIX)
+    # 🔍 SYSTEM: DATA VALIDATION & SMART PREVIEW (V14.2 CORE)
     # ========================================================
-    # เคลียร์แถวขยะ: ถ้าแถวนั้นไม่มีข้อมูลเลยสักคอลัมน์ (ว่างทั้งแถว) ให้ลบออกไปก่อน ไม่ต้องเอามาคิดให้รก
+    # เคลียร์แถวขยะ: ถ้าแถวนั้นไม่มีข้อมูลเลยสักคอลัมน์ ให้ลบออกไปก่อน ไม่ต้องเอามาคิดให้รก
     df_clean_rows = df_raw.dropna(how='all').copy()
     
     # ตรวจสอบชื่อคอลัมน์ในไฟล์จริง (กันเรื่องตัวเล็ก-ใหญ่)
@@ -58,7 +68,13 @@ if uploaded_file:
                 preview_cols.append(c)
                 
         df_preview = df_invalid[preview_cols].copy()
-        # แปลง Index ให้ตรงกับเลขบรรทัดจริงในโปรแกรม Excel (บวก 2 เพราะ Excel แถวแรกคือหัวตาราง)
+        
+        # จัดการแปลงรูปแบบรหัสสินค้าในพรีวิวให้คลีน ไม่ติด .0 เช่นกัน
+        if 'รหัสสินค้า' in df_preview.columns:
+            df_preview['รหัสสินค้า'] = df_preview['รหัสสินค้า'].apply(clean_code_to_str)
+        if 'รหัสสาขา' in df_preview.columns:
+            df_preview['รหัสสาขา'] = df_preview['รหัสสาขา'].apply(clean_code_to_str)
+            
         df_preview.index = df_preview.index + 2
         df_preview.index.name = 'แถวใน Excel (Row)'
         
@@ -66,13 +82,13 @@ if uploaded_file:
         st.markdown("---")
     
     # ==========================================
-    # WORKSPACE TABS (V13.1 / V14.0 CORE)
+    # WORKSPACE TABS
     # ==========================================
     tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์ (Full Option)", "📄 2. ออกใบส่งสินค้า (V11.0 Clean)"])
 
     # --- TAB 1: ระบบแยกซัพพลายเออร์ ---
     with tab1:
-        df_split = df_raw.dropna(subset=['ซัพพลายเออร์'])
+        df_split = df_raw.dropna(subset=['ซัพพลายเออร์']).copy()
         unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
         
         st.subheader("📝 กำหนดชื่อตัวย่อชีต")
@@ -108,10 +124,14 @@ if uploaded_file:
                     curr_row = 1
                     for (branch, store_name, zone), b_group in df_sup.groupby(['รหัสสาขา', 'Store Name', 'โซน'], sort=False):
                         for i, (_, row) in enumerate(b_group.iterrows()):
-                            worksheet.write(curr_row, 0, branch if i == 0 else "", cell_fmt)
+                            # แปลงรหัสให้คลีน ไม่มีจุดทศนิยม .0
+                            branch_clean = clean_code_to_str(branch)
+                            p_code_clean = clean_code_to_str(row['รหัสสินค้า'])
+                            
+                            worksheet.write(curr_row, 0, branch_clean if i == 0 else "", cell_fmt)
                             worksheet.write(curr_row, 1, store_name if i == 0 else "", cell_fmt)
                             worksheet.write(curr_row, 2, zone if i == 0 else "", cell_fmt)
-                            worksheet.write(curr_row, 3, row['รหัสสินค้า'], cell_fmt)
+                            worksheet.write(curr_row, 3, p_code_clean, cell_fmt)
                             worksheet.write(curr_row, 4, row['รายการสินค้า'], cell_fmt)
                             worksheet.write(curr_row, 5, row['ซัพพลายเออร์'], cell_fmt)
                             worksheet.write(curr_row, 6, row['หน่วย'], cell_fmt)
@@ -129,8 +149,9 @@ if uploaded_file:
                     
                     right_summary = df_sup.groupby(['รหัสสินค้า', 'รายการสินค้า'], as_index=False)['จำนวน'].sum()
                     for i, row in right_summary.iterrows():
+                        p_code_right_clean = clean_code_to_str(row['รหัสสินค้า'])
                         worksheet.write(i + 1, col_offset, "", cell_fmt)
-                        worksheet.write(i + 1, col_offset + 1, row['รหัสสินค้า'], cell_fmt)
+                        worksheet.write(i + 1, col_offset + 1, p_code_right_clean, cell_fmt)
                         worksheet.write(i + 1, col_offset + 2, row['รายการสินค้า'], cell_fmt)
                         worksheet.write(i + 1, col_offset + 3, row['จำนวน'], num_fmt)
                     
@@ -153,12 +174,12 @@ if uploaded_file:
                     worksheet.set_column('N:N', 15)  
 
             st.success("✅ ประมวลผลแยกซัพพลายเออร์สำเร็จ!")
-            st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter V14.2", data=output_split.getvalue(), file_name="Intanin_Splitter_V14.2.xlsx")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter V14.3", data=output_split.getvalue(), file_name="Intanin_Splitter_V14.3.xlsx")
 
-    # --- TAB 2: ออกใบ DO (โครงสร้างคงเดิมร้อยเปอร์เซ็นต์) ---
+    # --- TAB 2: ออกใบ DO (แก้ไขประเภทข้อมูล .0 ของ Product Code) ---
     with tab2:
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
-        if st.button("🚀 สร้างใบส่งสินค้า Official V14.2"):
+        if st.button("🚀 สร้างใบส่งสินค้า Official V14.3"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
@@ -183,15 +204,18 @@ if uploaded_file:
                     df_store = df_clean[df_clean['รหัสสาขา'] == store_code].copy()
                     if curr > 0: page_breaks.append(curr)
                     first = df_store.iloc[0]
+                    
+                    store_code_clean = clean_code_to_str(store_code)
+                    
                     worksheet.merge_range(curr, 0, curr, 2, 'บริษัท โมบาย โลจิสติกส์ จำกัด', f_comp)
                     worksheet.merge_range(curr+1, 0, curr+1, 1, '279 หมู่ที่ 9 ตำบลบางโฉลง อำเภอบางพลี', f_std)
                     worksheet.merge_range(curr+2, 0, curr+2, 1, 'จังหวัดสมุทรปราการ 10540', f_std)
                     worksheet.merge_range(curr+3, 0, curr+3, 2, 'ติดต่อ/สอบถาม : ID Line Official : @505phsps (มี @ ), Tel : 099-157-3114', f_std)
-                    worksheet.write(curr+4, 0, 'Customer Name', f_std); worksheet.write(curr+5, 0, f'Store Code: {store_code}', f_bold)
+                    worksheet.write(curr+4, 0, 'Customer Name', f_std); worksheet.write(curr+5, 0, f'Store Code: {store_code_clean}', f_bold)
                     worksheet.write(curr+6, 0, f'Store Name: {first["Store Name"]}', f_bold); worksheet.write(curr+7, 0, f'Ship To: {first["ที่อยู่"]}', f_std)
                     worksheet.merge_range(curr+1, 2, curr+2, 2, 'ใบส่งสินค้าชั่วคราว', f_title)
-                    worksheet.write(curr, 3, 'Do. No.', f_right); worksheet.write(curr, 4, str(first["เลขที่ DO."]), f_std)
-                    worksheet.write(curr+1, 3, 'Ref. Po.', f_right); worksheet.write(curr+1, 4, str(first["เลขที่ PO."]), f_std)
+                    worksheet.write(curr, 3, 'Do. No.', f_right); worksheet.write(curr, 4, clean_code_to_str(first["เลขที่ DO."]), f_std)
+                    worksheet.write(curr+1, 3, 'Ref. Po.', f_right); worksheet.write(curr+1, 4, clean_code_to_str(first["เลขที่ PO."]), f_std)
                     worksheet.write(curr+2, 3, 'Ref. Po.', f_right); worksheet.write(curr+2, 4, '-', f_std)
                     worksheet.write(curr+3, 3, 'Ref. Po.', f_right); worksheet.write(curr+3, 4, '-', f_std)
                     
@@ -208,9 +232,16 @@ if uploaded_file:
                     for i, txt in enumerate(['No.', 'Product Code', 'Product Name', 'Unit/UOM', 'QTY']): worksheet.write(t_h, i, txt, f_table_h)
                     r_ptr = t_h + 1
                     for i, (_, r) in enumerate(df_store.iterrows(), 1):
-                        worksheet.write(r_ptr, 0, i, f_border); worksheet.write(r_ptr, 1, str(r['รหัสสินค้า']), f_border)
-                        worksheet.write(r_ptr, 2, r['รายการสินค้า'], f_wrap); worksheet.write(r_ptr, 3, r['หน่วย'], f_border)
-                        worksheet.write(r_ptr, 4, r['จำนวน'], f_border); r_ptr += 1
+                        # แก้วิกฤต .0 โดยการแปลงด้วยฟังก์ชันทำความสะอาดรหัสสินค้าตรงนี้
+                        product_code_clean = clean_code_to_str(r['รหัสสินค้า'])
+                        
+                        worksheet.write(r_ptr, 0, i, f_border)
+                        worksheet.write(r_ptr, 1, product_code_clean, f_border) # เขียนค่า String คลีนลง Excel ตรงๆ
+                        worksheet.write(r_ptr, 2, r['รายการสินค้า'], f_wrap)
+                        worksheet.write(r_ptr, 3, r['หน่วย'], f_border)
+                        worksheet.write(r_ptr, 4, r['จำนวน'], f_border)
+                        r_ptr += 1
+                        
                     worksheet.merge_range(r_ptr, 0, r_ptr, 3, 'Total', f_table_h); worksheet.write(r_ptr, 4, df_store['จำนวน'].sum(), f_border)
                     f_row = r_ptr + 1
                     worksheet.merge_range(f_row, 0, f_row, 1, 'ผู้รับสินค้า', f_footer_h); worksheet.merge_range(f_row, 2, f_row, 3, 'ผู้ส่งสินค้า / ทะเบียนรถ', f_footer_h); worksheet.write(f_row, 4, 'คลังสินค้า', f_footer_h)
@@ -220,5 +251,5 @@ if uploaded_file:
                     curr = f_row + 2
                 worksheet.set_h_pagebreaks(page_breaks); worksheet.fit_to_pages(1, 0)
 
-            st.success("✅ สร้างไฟล์ DO สำเร็จ!")
-            st.download_button("📥 ดาวน์โหลด DO Master", output_do.getvalue(), "Intanin_DO_Final_V14.2.xlsx")
+            st.success("✅ สร้างไฟล์ DO สำเร็จโดยไม่มีเศษทศนิยมกวนใจ!")
+            st.download_button("📥 ดาวน์โหลด DO Master V14.3", output_do.getvalue(), "Intanin_DO_Final_V14.3.xlsx")
