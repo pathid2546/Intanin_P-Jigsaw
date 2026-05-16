@@ -1,20 +1,14 @@
 import streamlit as st
 import pandas as pd
 import io
-import time
 
 # --- CONFIG & OFFICIAL CSS (Shell UI) ---
 st.set_page_config(page_title="Intanin Receipt Convert", layout="wide", page_icon="📦")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght=300;400;700&display=swap');
     html, body, [class*="css"] { font-family: 'Sarabun', sans-serif; }
-    
-    /* Skeleton Loading CSS */
-    @keyframes skeleton-loading { 0% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-    .skeleton { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: skeleton-loading 1.5s infinite; border-radius: 8px; margin-bottom: 10px; }
-    
     .main-header { padding: 1.5rem; border-bottom: 3px solid #2e7d32; margin-bottom: 2rem; }
     </style>
     """, unsafe_allow_html=True)
@@ -22,7 +16,7 @@ st.markdown("""
 st.markdown("""
     <div class="main-header">
         <h1 style='text-align: center;'>🚛 Intanin Receipt Convert</h1>
-        <p style='text-align: center; color: #666;'>Official Logistics System (V12.8 - Fixed Column Width)</p>
+        <p style='text-align: center; color: #666;'>Official Logistics System (V13.1 - Added 'สาขา' Column)</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -37,7 +31,7 @@ if uploaded_file:
     
     tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์ (Full Option)", "📄 2. ออกใบส่งสินค้า (V11.0 Clean)"])
 
-    # --- TAB 1: ระบบแยกซัพพลายเออร์ (ปรับความกว้างคอลัมน์ฝั่งขวาให้เท่ากับซ้าย) ---
+    # --- TAB 1: ระบบแยกซัพพลายเออร์ (เพิ่มคอลัมน์ สาขา แทรกเข้าไประหว่างรหัสสาขาและโซน) ---
     with tab1:
         df_split = df_raw.dropna(subset=['ซัพพลายเออร์'])
         unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
@@ -67,28 +61,30 @@ if uploaded_file:
                     df_sup = df_split[df_split['ซัพพลายเออร์'] == supplier].copy()
                     worksheet = workbook.add_worksheet(clean_name)
                     
-                    # --- ฝั่งซ้าย ---
-                    left_headers = ['รหัสสาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
+                    # --- ส่วนที่ 1: ตารางฝั่งซ้าย (มีทั้งหมด 8 คอลัมน์ แทรก "สาขา" ในลำดับที่ 2) ---
+                    left_headers = ['รหัสสาขา', 'สาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
                     for col, h in enumerate(left_headers): 
                         worksheet.write(0, col, h, header_fmt)
 
                     curr_row = 1
-                    for (branch, zone), b_group in df_sup.groupby(['รหัสสาขา', 'โซน'], sort=False):
+                    # Group ครอบคลุม รหัสสาขา, Store Name, โซน เพื่อนำมาเช็คการแสดงผลแถวแรก
+                    for (branch, store_name, zone), b_group in df_sup.groupby(['รหัสสาขา', 'Store Name', 'โซน'], sort=False):
                         for i, (_, row) in enumerate(b_group.iterrows()):
                             worksheet.write(curr_row, 0, branch if i == 0 else "", cell_fmt)
-                            worksheet.write(curr_row, 1, zone if i == 0 else "", cell_fmt)
-                            worksheet.write(curr_row, 2, row['รหัสสินค้า'], cell_fmt)
-                            worksheet.write(curr_row, 3, row['รายการสินค้า'], cell_fmt)
-                            worksheet.write(curr_row, 4, row['ซัพพลายเออร์'], cell_fmt)
-                            worksheet.write(curr_row, 5, row['หน่วย'], cell_fmt)
-                            worksheet.write(curr_row, 6, row['จำนวน'], num_fmt)
+                            worksheet.write(curr_row, 1, store_name if i == 0 else "", cell_fmt) # คอลัมน์ สาขา (แสดงเฉพาะแถวแรก)
+                            worksheet.write(curr_row, 2, zone if i == 0 else "", cell_fmt)
+                            worksheet.write(curr_row, 3, row['รหัสสินค้า'], cell_fmt)
+                            worksheet.write(curr_row, 4, row['รายการสินค้า'], cell_fmt)
+                            worksheet.write(curr_row, 5, row['ซัพพลายเออร์'], cell_fmt)
+                            worksheet.write(curr_row, 6, row['หน่วย'], cell_fmt)
+                            worksheet.write(curr_row, 7, row['จำนวน'], num_fmt)
                             curr_row += 1
                     
                     worksheet.write(curr_row, 0, "Grand Total", total_fmt)
-                    worksheet.write(curr_row, 6, df_sup['จำนวน'].sum(), total_fmt)
+                    worksheet.write(curr_row, 7, df_sup['จำนวน'].sum(), total_fmt)
                     
-                    # --- ฝั่งขวา (คอลัมน์ J เป็นต้นไป) ---
-                    col_offset = 9
+                    # --- ส่วนที่ 2: ตารางฝั่งขวา (ขยับไปเริ่มที่คอลัมน์ K ห่างจากตารางซ้าย 2 ช่องหลวมๆ พอดี) ---
+                    col_offset = 10  
                     right_headers = ['ซัพพลายเออร์', 'รหัสสินค้า', 'รายการสินค้า', 'Total']
                     for col, h in enumerate(right_headers): 
                         worksheet.write(0, col_offset + col, h, header_fmt)
@@ -104,24 +100,27 @@ if uploaded_file:
                     worksheet.write(sum_row, col_offset, f"{supplier} Total", total_fmt)
                     worksheet.write(sum_row, col_offset + 3, right_summary['จำนวน'].sum(), total_fmt)
                     
-                    # ตั้งค่าความกว้างคอลัมน์ (ปรับให้สมมาตรกันทั้งซ้ายและขวา)
-                    worksheet.set_column('A:B', 15)
-                    worksheet.set_column('C:C', 15)  # รหัสสินค้า (ซ้าย)
-                    worksheet.set_column('D:D', 35)  # รายการสินค้า (ซ้าย)
-                    worksheet.set_column('E:G', 15)
+                    # ตั้งค่าความกว้างคอลัมน์ตารางฝั่งซ้าย (A - H)
+                    worksheet.set_column('A:A', 15)  # รหัสสาขา
+                    worksheet.set_column('B:B', 30)  # สาขา (กว้างพอดีสำหรับชื่อ Store Name)
+                    worksheet.set_column('C:C', 15)  # โซน
+                    worksheet.set_column('D:D', 15)  # รหัสสินค้า (ซ้าย)
+                    worksheet.set_column('E:E', 35)  # รายการสินค้า (ซ้าย)
+                    worksheet.set_column('F:H', 15)  # ซัพพลายเออร์, หน่วย, Total
                     
-                    worksheet.set_column('J:J', 15)
-                    worksheet.set_column('K:K', 15)  # รหัสสินค้า (ขวา) -> ปรับให้เท่ากับ C
-                    worksheet.set_column('L:L', 35)  # รายการสินค้า (ขวา) -> ปรับให้เท่ากับ D
-                    worksheet.set_column('M:M', 15)
+                    # ตั้งค่าความกว้างคอลัมน์ตารางฝั่งขวา (K - N) สมมาตรกับฝั่งซ้ายเป๊ะๆ
+                    worksheet.set_column('K:K', 15)  # ซัพพลายเออร์ (ขวา)
+                    worksheet.set_column('L:L', 15)  # รหัสสินค้า (ขวา) -> กว้าง 15 เท่ากับคอลัมน์ D
+                    worksheet.set_column('M:M', 35)  # รายการสินค้า (ขวา) -> กว้าง 35 เท่ากับคอลัมน์ E
+                    worksheet.set_column('N:N', 15)  # Total (ขวา)
 
-            st.success("✅ ปรับขนาดคอลัมน์เรียบร้อย!")
-            st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter", data=output_split.getvalue(), file_name="Intanin_Splitter_V12.8.xlsx")
+            st.success("✅ เพิ่มคอลัมน์สาขาเรียบร้อยแล้ว!")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter V13.1", data=output_split.getvalue(), file_name="Intanin_Splitter_V13.1.xlsx")
 
-    # --- TAB 2: ออกใบ DO (Logic 12.4 เดิม) ---
+    # --- TAB 2: ออกใบ DO (คงเดิมตามโครงสร้างสรุป V12.4 / V12.8 ล็อคโครงสร้างเดิมร้อยเปอร์เซ็นต์) ---
     with tab2:
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
-        if st.button("🚀 สร้างใบส่งสินค้า Official V12.8"):
+        if st.button("🚀 สร้างใบส่งสินค้า Official V13.1"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
@@ -179,4 +178,4 @@ if uploaded_file:
                 worksheet.set_h_pagebreaks(page_breaks); worksheet.fit_to_pages(1, 0)
 
             st.success("✅ สร้างไฟล์ DO สำเร็จ!")
-            st.download_button("📥 ดาวน์โหลด DO Master", output_do.getvalue(), "Intanin_DO_Final_V12.8.xlsx")
+            st.download_button("📥 ดาวน์โหลด DO Master", output_do.getvalue(), "Intanin_DO_Final_V13.1.xlsx")
