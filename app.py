@@ -300,5 +300,5 @@ if uploaded_file:
                     curr = f_row + 2
                 worksheet.set_h_pagebreaks(page_breaks); worksheet.fit_to_pages(1, 0)
 
-            st.success("✅ สร้างใบส่งสินค้าเรียบร้อย รหัสไม่มีจุดทศนิยมกวนใจ!")
+            st.success("✅ สร้างใบส่งสินค้าเรียบร้อย")
             st.download_button("📥 ดาวน์โหลดไฟล์ DO Master", output_do.getvalue(), "Intanin_DO_BD_Edition.xlsx")
