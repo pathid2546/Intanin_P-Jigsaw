@@ -17,7 +17,7 @@ st.markdown("""
 st.markdown("""
     <div class="main-header">
         <h1 style='text-align: center;'>🚛 Intanin Receipt Convert</h1>
-        <p style='text-align: center; color: #666;'>Official Logistics System (V14.0 - Data Validation Dashboard)</p>
+        <p style='text-align: center; color: #666;'>Official Logistics System (V14.1 - Smart Validation Dashboard)</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -31,11 +31,9 @@ if uploaded_file:
         df_raw = pd.read_excel(uploaded_file, sheet_name='Transport')
     
     # ==========================================
-    # 🔍 SYSTEM: DATA VALIDATION & PREVIEW
+    # 🔍 SYSTEM: DATA VALIDATION & SMART PREVIEW
     # ==========================================
-    st.markdown("### 🔍 ระบบตรวจสอบข้อมูลคอลัมน์ วันที่ (Data Validation)")
-    
-    # ตรวจสอบชื่อคอลัมน์ในไฟล์จริง (ป้องกันกรณีพิมพ์ผิดตัวเล็กตัวใหญ่)
+    # ตรวจสอบชื่อคอลัมน์ในไฟล์จริง (ป้องกันเรื่องตัวเล็ก-ใหญ่)
     col_cutoff = [c for c in df_raw.columns if 'cut' in c.lower() and 'off' in c.lower()]
     col_delivery = [c for c in df_raw.columns if 'deliv' in c.lower() and 'date' in c.lower()]
     
@@ -45,29 +43,27 @@ if uploaded_file:
     # ค้นหาแถวที่คอลัมน์ Cut Off Date หรือ Delivery Date เป็นค่าว่าง
     df_invalid = df_raw[df_raw[name_cutoff].isna() | df_raw[name_delivery].isna()].copy()
     
+    # ลอจิก: แสดงเฉพาะตอนที่เจอปัญหาเท่านั้น (ถ้าว่างหมด/ไม่มีแถวเสียเลย จะไม่แสดงอะไรเลย)
     if len(df_invalid) > 0:
+        st.markdown("### 🔍 ระบบตรวจสอบข้อมูลคอลัมน์ วันที่ (Data Validation)")
         st.error(f"⚠️ พบข้อมูลไม่ครบถ้วน! มีช่องว่างในคอลัมน์วันที่ ทั้งหมด {len(df_invalid)} แถว (กรุณาตรวจสอบตารางพรีวิวด้านล่าง)")
         
-        # ปรับเลย์เอาต์ดึงคอลัมน์หลักมาพรีวิวให้อ่านง่าย
+        # เลือกคอลัมน์หลักมาพรีวิวเพื่อให้หาต้นตอใน Excel ได้ง่าย
         preview_cols = []
         for c in ['รหัสสาขา', 'Store Name', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', name_cutoff, name_delivery]:
             if c in df_raw.columns:
                 preview_cols.append(c)
                 
         df_preview = df_invalid[preview_cols].copy()
-        # แปลง Index แสดงเป็นเลขแถวใน Excel เพื่อให้หาเจอง่ายๆ (Excel แถวแรกเริ่มที่ 2 เพราะมีหัวตาราง)
+        # แปลง Index ให้ตรงกับเลขแถวในโปรแกรม Excel (Excel เริ่มแถวข้อมูลที่ 2)
         df_preview.index = df_preview.index + 2
         df_preview.index.name = 'แถวใน Excel (Row)'
         
-        # แสดงตารางพรีวิวแถวที่มีปัญหา
         st.dataframe(df_preview, use_container_width=True)
-    else:
-        st.success("🎉 ไม่พบช่องว่างในคอลัมน์ Cut Off Date และ Delivery Date ข้อมูลถูกต้องครบถ้วนพร้อมใช้งาน!")
-    
-    st.markdown("---")
+        st.markdown("---")
     
     # ==========================================
-    # WORKSPACE TABS (V13.1 CORE)
+    # WORKSPACE TABS (V13.1 / V14.0 CORE)
     # ==========================================
     tab1, tab2 = st.tabs(["✂️ 1. แยกซัพพลายเออร์ (Full Option)", "📄 2. ออกใบส่งสินค้า (V11.0 Clean)"])
 
@@ -76,7 +72,7 @@ if uploaded_file:
         df_split = df_raw.dropna(subset=['ซัพพลายเออร์'])
         unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
         
-        st.subheader("📝 กำหนดชื่อตัวย่อชีต")
+        st.subheader("📝 定 กำหนดชื่อตัวย่อชีต")
         with st.form("sheet_name_form"):
             cols = st.columns(3)
             current_mapping = {}
@@ -101,7 +97,7 @@ if uploaded_file:
                     df_sup = df_split[df_split['ซัพพลายเออร์'] == supplier].copy()
                     worksheet = workbook.add_worksheet(clean_name)
                     
-                    # --- ส่วนที่ 1: ตารางฝั่งซ้าย (8 คอลัมน์ โครงสร้าง V13.1 เป๊ะ) ---
+                    # --- ส่วนที่ 1: ตารางฝั่งซ้าย (8 คอลัมน์ โครงสร้างหลัก) ---
                     left_headers = ['รหัสสาขา', 'สาขา', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', 'ซัพพลายเออร์', 'หน่วย', 'Total']
                     for col, h in enumerate(left_headers): 
                         worksheet.write(0, col, h, header_fmt)
@@ -122,7 +118,7 @@ if uploaded_file:
                     worksheet.write(curr_row, 0, "Grand Total", total_fmt)
                     worksheet.write(curr_row, 7, df_sup['จำนวน'].sum(), total_fmt)
                     
-                    # --- ส่วนที่ 2: ตารางฝั่งขวา ---
+                    # --- ส่วนที่ 2: ตารางฝั่งขวา (Summary) ---
                     col_offset = 10  
                     right_headers = ['ซัพพลายเออร์', 'รหัสสินค้า', 'รายการสินค้า', 'Total']
                     for col, h in enumerate(right_headers): 
@@ -147,19 +143,19 @@ if uploaded_file:
                     worksheet.set_column('E:E', 35)  
                     worksheet.set_column('F:H', 15)  
                     
-                    # ความกว้างคอลัมน์ฝั่งขวา (K - N) บังคับความกว้างเท่ากันสมมาตร
+                    # ความกว้างคอลัมน์ฝั่งขวา (K - N) บังคับให้ขนาดคอลัมน์รหัสและสินค้าเท่ากันเป๊ะ
                     worksheet.set_column('K:K', 15)  
-                    worksheet.set_column('L:L', 15)  # รหัสสินค้า ขวา = 15 เท่ากับซ้าย
-                    worksheet.set_column('M:M', 35)  # รายการสินค้า ขวา = 35 เท่ากับซ้าย
+                    worksheet.set_column('L:L', 15)  # รหัสสินค้า ขวา = 15 เท่ากับคอลัมน์ D
+                    worksheet.set_column('M:M', 35)  # รายการสินค้า ขวา = 35 เท่ากับคอลัมน์ E
                     worksheet.set_column('N:N', 15)  
 
             st.success("✅ ประมวลผลแยกซัพพลายเออร์สำเร็จ!")
-            st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter V14.0", data=output_split.getvalue(), file_name="Intanin_Splitter_V14.0.xlsx")
+            st.download_button(label="📥 ดาวน์โหลดไฟล์ Splitter V14.1", data=output_split.getvalue(), file_name="Intanin_Splitter_V14.1.xlsx")
 
-    # --- TAB 2: ออกใบ DO (โครงสร้างล็อกเดิม) ---
+    # --- TAB 2: ออกใบ DO (โครงสร้างคงเดิมร้อยเปอร์เซ็นต์) ---
     with tab2:
         df_clean = df_raw.dropna(subset=['รหัสสาขา']).copy()
-        if st.button("🚀 สร้างใบส่งสินค้า Official V14.0"):
+        if st.button("🚀 สร้างใบส่งสินค้า Official V14.1"):
             output_do = io.BytesIO()
             with pd.ExcelWriter(output_do, engine='xlsxwriter') as writer:
                 workbook = writer.book
@@ -222,4 +218,4 @@ if uploaded_file:
                 worksheet.set_h_pagebreaks(page_breaks); worksheet.fit_to_pages(1, 0)
 
             st.success("✅ สร้างไฟล์ DO สำเร็จ!")
-            st.download_button("📥 ดาวน์โหลด DO Master", output_do.getvalue(), "Intanin_DO_Final_V14.0.xlsx")
+            st.download_button("📥 ดาวน์โหลด DO Master", output_do.getvalue(), "Intanin_DO_Final_V14.1.xlsx")
