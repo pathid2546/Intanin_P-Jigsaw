@@ -77,7 +77,7 @@ st.markdown("""
 st.markdown("""
     <div class="bd-header">
         <div class="bd-title">Intanin Receipt Convert</div>
-        <div class="bd-subtitle">Business Development Logistics System</div>
+        <div class="bd-subtitle">Mobile logistics @Business Development</div>
     </div>
     """, unsafe_allow_html=True)
 
