@@ -2,111 +2,115 @@ import streamlit as st
 import pandas as pd
 import io
 import plotly.express as px  
+import requests
+import jwt
+import urllib.parse
 
-# --- CONFIG & DYNAMIC SYSTEM UI (Support Dark/Light Mode) ---
+# --- CONFIG & DYNAMIC SYSTEM UI ---
 st.set_page_config(page_title="Intanin BD System", layout="wide", page_icon="📊")
 
 # ========================================================
-# 🔒 [SECURITY CENTER] ระบบล็อกอินด้วย Google Account (Domain Mail)
+# 🔒 [SECURITY CENTER] ระบบล็อกอิน Google OAuth แบบเสถียรสูง
 # ========================================================
 
-# 🛑 กรุณาเปลี่ยนเป็นโดเมนอีเมลขององค์กรคุณที่อนุญาตให้เข้าใช้งาน
-ALLOWED_DOMAIN = "@mobilelogistics.co.th" 
+# ดึงค่าคอนฟิกความปลอดภัยจาก Streamlit Secrets
+GOOGLE_CLIENT_ID = st.secrets.get("auth", {}).get("client_id", "")
+GOOGLE_CLIENT_SECRET = st.secrets.get("auth", {}).get("client_secret", "")
+REDIRECT_URI = st.secrets.get("auth", {}).get("redirect_uri", "")
+ALLOWED_DOMAIN = "@mobilelogistics.co.th"  # 🛑 เปลี่ยนเป็นโดเมนอีเมลขององค์กรคุณ
 
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
-# ตรวจสอบว่ามีข้อมูลการล็อกอินจาก Google หรือยัง
-if not st.session_state["authenticated"]:
-    st.markdown("""
-        <div style='text-align: center; padding: 2rem 1rem;'>
-            <h1 style='color: #2e7d32; font-weight: 700; font-size: 2.3rem;'>🔒 Intanin Corporate Login</h1>
-            <p style='opacity: 0.7; font-size: 1rem; margin-bottom: 2rem;'>ระบบความปลอดภัยชั้นสูง เฉพาะพนักงานในโดเมนองค์กรเท่านั้น</p>
-        </div>
-    """, unsafe_allow_html=True)
+# ฟังชันสร้างลิงก์สำหรับส่งพนักงานไปล็อกอินที่ Google
+def get_google_login_url():
+    base_url = "https://accounts.google.com/o/oauth2/v2/auth"
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "online"
+    }
+    return f"{base_url}?{urllib.parse.urlencode(params)}"
 
-    with st.container(border=True):
-        st.subheader("🔑 ยืนยันตัวตนพนักงาน")
-        st.write("กรุณาคลิกปุ่มด้านล่างเพื่อเข้าสู่ระบบด้วย Google Account ขององค์กร")
-        
-        # ใช้ระบบล็อกอินสำเร็จรูปมาตรฐานของ Streamlit ร่วมกับ Google OAuth
-        user_info = st.login(provider="google", label="Sign in with Google Account")
-        
-        if user_info:
-            user_email = user_info.get("email", "")
-            
-            # ตรวจสอบความถูกต้องของ Domain Mail
-            if user_email.endswith(ALLOWED_DOMAIN):
-                st.session_state["authenticated"] = True
-                st.session_state["user_email"] = user_email
-                st.rerun()
-            else:
-                st.error(f"❌ ปฏิเสธการเข้าถึง! อีเมล {user_email} ไม่ใช่โดเมนขององค์กร ({ALLOWED_DOMAIN})")
-                if st.button("ลองล็อกอินใหม่อีกครั้ง"):
-                    st.logout()
+# หน้าจอ Gateway ล็อกอินสำหรับควบคุมความปลอดภัย
+if not st.session_state["authenticated"]:
+    # เช็คว่ามี Code ส่งกลับมาจาก Google หลังจากล็อกอินสำเร็จหรือไม่
+    query_params = st.query_params
+    if "code" in query_params:
+        auth_code = query_params["code"]
+        # แลกเปลี่ยน Code เป็นข้อมูลผู้ใช้งานพนักงาน (Token Exchange)
+        token_url = "https://oauth2.googleapis.com/token"
+        token_data = {
+            "code": auth_code,
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "redirect_uri": REDIRECT_URI,
+            "grant_type": "authorization_code"
+        }
+        try:
+            token_res = requests.post(token_url, data=token_data).json()
+            id_token = token_res.get("id_token")
+            if id_token:
+                # ถอดรหัสอ่านข้อมูลอีเมลจาก Google Profile Token
+                decoded_token = jwt.decode(id_token, options={"verify_signature": False})
+                user_email = decoded_token.get("email", "")
+                
+                # ตรวจสอบความถูกต้องของโดเมนบริษัท
+                if user_email.endswith(ALLOWED_DOMAIN):
+                    st.session_state["authenticated"] = True
+                    st.session_state["user_email"] = user_email
+                    st.query_params.clear() # ล้างค่า url parameter ของเว็บ
                     st.rerun()
-    st.stop() # บล็อกการทำงานของโค้ดด้านล่างทั้งหมดอย่างเด็ดขาดหากยังล็อกอินไม่ผ่าน
+                else:
+                    st.error(f"❌ ปฏิเสธการเข้าถึง! อีเมล {user_email} ไม่ใช่โดเมนขององค์กร ({ALLOWED_DOMAIN})")
+        except Exception as e:
+            st.error("เกิดข้อผิดพลาดในการตรวจสอบสิทธิ์ กรุณาลองใหม่อีกครั้ง")
+
+    # ส่วนแสดงผล UI ล็อกอินของพนักงาน
+    if not st.session_state["authenticated"]:
+        st.markdown("""
+            <div style='text-align: center; padding: 2rem 1rem;'>
+                <h1 style='color: #2e7d32; font-weight: 700; font-size: 2.3rem;'>🔒 Intanin Corporate Login</h1>
+                <p style='opacity: 0.7; font-size: 1rem; margin-bottom: 2rem;'>ระบบความปลอดภัยชั้นสูง เฉพาะพนักงานในโดเมนองค์กรเท่านั้น</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            st.subheader("🔑 ยืนยันตัวตนพนักงาน")
+            st.write("กรุณาคลิกปุ่มด้านล่างเพื่อเชื่อมต่อและยืนยันตัวตนด้วย Google Account ของบริษัท")
+            login_url = get_google_login_url()
+            st.markdown(f'<a href="{login_url}" target="_self"><button style="background-color: #2e7d32; color: white; padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; width: 100%;">Sign in with Google Account</button></a>', unsafe_allow_html=True)
+        st.stop()
 
 # ========================================================
 # ✅ [PASSED] เข้าสู่หน้าเว็บหลักหลังจากยืนยันตัวตนสำเร็จ
 # ========================================================
 
-# ปรับ CSS รองรับ Dark/Light Mode และแต่งสไตล์ UI หน้าเว็บ
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght=300;400;500;700&display=swap');
-    
-    html, body, [class*="css"] { 
-        font-family: 'Sarabun', sans-serif; 
-    }
-    
+    html, body, [class*="css"] { font-family: 'Sarabun', sans-serif; }
     .bd-header { 
-        background: rgba(128, 128, 128, 0.08);
-        backdrop-filter: blur(15px);
-        -webkit-backdrop-filter: blur(15px);
-        padding: 1.8rem 1rem; 
-        border-radius: 16px;
-        border: 1px solid rgba(128, 128, 128, 0.15);
-        margin-bottom: 2rem;
-        text-align: center;
+        background: rgba(128, 128, 128, 0.08); padding: 1.8rem 1rem; 
+        border-radius: 16px; border: 1px solid rgba(128, 128, 128, 0.15);
+        margin-bottom: 2rem; text-align: center;
     }
     .bd-title {
-        font-weight: 700;
-        font-size: 2.2rem;
-        letter-spacing: -0.02em;
+        font-weight: 700; font-size: 2.2rem;
         background: linear-gradient(135deg, #2e7d32 0%, #4caf50 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0.2rem;
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     }
-    .bd-subtitle {
-        color: var(--text-color);
-        opacity: 0.6;
-        font-size: 0.95rem;
-        font-weight: 400;
-    }
-    
+    .bd-subtitle { opacity: 0.6; font-size: 0.95rem; }
     div.stButton > button, div.stDownloadButton > button {
         background: linear-gradient(180deg, #34c759 0%, #28cd41 100%) !important;
-        color: #ffffff !important;
-        border-radius: 10px !important;
-        border: none !important;
-        padding: 0.5rem 1.8rem !important;
-        font-weight: 500 !important;
-        box-shadow: 0 4px 10px rgba(52, 199, 89, 0.15) !important;
-        transition: all 0.2s ease !important;
+        color: #ffffff !important; border-radius: 10px !important; border: none !important;
+        padding: 0.5rem 1.8rem !important; font-weight: 500 !important;
     }
-    div.stButton > button:hover, div.stDownloadButton > button:hover {
-        transform: translateY(-1px) !important;
-        box-shadow: 0 6px 15px rgba(52, 199, 89, 0.25) !important;
-    }
-    
     .kpi-card {
-        background: rgba(128, 128, 128, 0.05);
-        border: 1px solid rgba(128, 128, 128, 0.12);
-        padding: 1.2rem;
-        border-radius: 12px;
-        text-align: center;
+        background: rgba(128, 128, 128, 0.05); border: 1px solid rgba(128, 128, 128, 0.12);
+        padding: 1.2rem; border-radius: 12px; text-align: center;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -122,30 +126,21 @@ if 'name_memory' not in st.session_state:
     st.session_state['name_memory'] = {}
 
 def clean_code_to_str(val):
-    if pd.isna(val):
-        return ""
+    if pd.isna(val): return ""
     val_str = str(val).strip()
-    if val_str.endswith('.0'):
-        val_str = val_str[:-2]
+    if val_str.endswith('.0'): val_str = val_str[:-2]
     return val_str
 
 # --- SIDEBAR NAVIGATION ---
 st.sidebar.markdown("### 👤 ข้อมูลผู้เข้าใช้งาน")
 st.sidebar.info(f"📧 {st.session_state.get('user_email', 'Staff')}")
 if st.sidebar.button("🚪 ออกจากระบบปลอดภัย"):
-    st.logout()
     st.session_state["authenticated"] = False
     st.rerun()
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🍏 เมนูควบคุมระบบ")
-app_mode = st.sidebar.radio(
-    "เลือกหน้าต่างการใช้งาน:",
-    ["📄 Convert Data (จัดการเอกสาร)", "📊 Analytics Dashboard (วิเคราะห์ข้อมูล)"]
-)
-
-st.sidebar.markdown("---")
-st.sidebar.caption("Powered by Business Development Team • 2026")
+app_mode = st.sidebar.radio("เลือกหน้าต่างการใช้งาน:", ["📄 Convert Data (จัดการเอกสาร)", "📊 Analytics Dashboard (วิเคราะห์ข้อมูล)"])
 
 # ช่องอัปโหลดไฟล์ส่วนกลางของระบบ
 uploaded_file = st.file_uploader("📂 อัปโหลดไฟล์ Excel (Transport)", type=['xlsx'])
@@ -170,11 +165,9 @@ if 'df_raw' in st.session_state:
     # ========================================================
     if app_mode == "📄 Convert Data (จัดการเอกสาร)":
         df_invalid = df_clean_rows[df_clean_rows[name_cutoff].isna() | df_clean_rows[name_delivery].isna()].copy()
-        
         if len(df_invalid) > 0:
             st.markdown("<h4 style='font-weight:600; color:#ff4b4b;'>🔍 ตรวจพบข้อมูลไม่ครบถ้วนในบางแถวงาน</h4>", unsafe_allow_html=True)
             st.error(f"พบช่องว่างในคอลัมน์วันที่ ทั้งหมด {len(df_invalid)} แถว")
-            
             preview_cols = [c for c in ['รหัสสาขา', 'Store Name', 'โซน', 'รหัสสินค้า', 'รายการสินค้า', name_cutoff, name_delivery] if c in df_clean_rows.columns]
             df_preview = df_invalid[preview_cols].copy()
             if 'รหัสสินค้า' in df_preview.columns: df_preview['รหัสสินค้า'] = df_preview['รหัสสินค้า'].apply(clean_code_to_str)
@@ -187,7 +180,7 @@ if 'df_raw' in st.session_state:
 
         with tab1:
             df_split = df_raw.dropna(subset=['ซัพพลายเออร์']).copy()
-            unique_suppliers = sorted(df_split['ซัพพลายเออร์'].unique())
+            unique_suppliers = sorted(df_split['ซัพพลายえる'].unique()) if 'ซัพพลายเออร์' in df_split.columns else []
             
             st.markdown("<h5 style='font-weight:600; margin-bottom:1rem;'>📝 ตั้งชื่อตัวย่อชีตซัพพลายเออร์</h5>", unsafe_allow_html=True)
             with st.form("sheet_name_form"):
@@ -247,9 +240,7 @@ if 'df_raw' in st.session_state:
                         sum_row = len(right_summary) + 1
                         worksheet.write(sum_row, col_offset, f"{supplier} Total", total_fmt)
                         worksheet.write(sum_row, col_offset + 3, right_summary['จำนวน'].sum(), total_fmt)
-                        
-                        worksheet.set_column('A:A', 15); worksheet.set_column('B:B', 30); worksheet.set_column('C:C', 15)
-                        worksheet.set_column('D:D', 15); worksheet.set_column('E:E', 35); worksheet.set_column('F:H', 15)
+                        worksheet.set_column('A:A', 15); worksheet.set_column('B:B', 30); worksheet.set_column('E:E', 35)
 
                 st.success("✅ แยกข้อมูลซัพพลายเออร์เรียบร้อยแล้ว!")
                 st.download_button(label="📥 ดาวน์โหลดไฟล์แยกซัพพลายเออร์", data=output_split.getvalue(), file_name="Intanin_Splitter_BD.xlsx")
@@ -269,11 +260,11 @@ if 'df_raw' in st.session_state:
                     f_title = workbook.add_format({'bold': True, 'font_size': 18, 'align': 'center', 'valign': 'vcenter'})
                     f_std = workbook.add_format({'font_size': 11}); f_bold = workbook.add_format({'bold': True, 'font_size': 11})
                     f_right = workbook.add_format({'font_size': 11, 'align': 'right'})
-                    f_deliv_label = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
-                    f_deliv_date = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'center', 'valign': 'vcenter'})
-                    f_border = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                    f_deliv_label = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'center', 'text_wrap': True})
+                    f_deliv_date = workbook.add_format({'bold': True, 'font_size': 11, 'align': 'center'})
+                    f_border = workbook.add_format({'border': 1, 'align': 'center'})
                     f_table_h = workbook.add_format({'border': 1, 'align': 'center', 'bold': True, 'bg_color': '#F2F2F2'})
-                    f_wrap = workbook.add_format({'border': 1, 'text_wrap': True, 'valign': 'vcenter'})
+                    f_wrap = workbook.add_format({'border': 1, 'text_wrap': True})
                     f_footer_h = workbook.add_format({'border': 1, 'align': 'center', 'bold': True})
                     f_footer_box = workbook.add_format({'border': 1, 'font_size': 10, 'valign': 'top'})
 
@@ -322,15 +313,14 @@ if 'df_raw' in st.session_state:
                         curr = f_row + 2
                     worksheet.set_h_pagebreaks(page_breaks); worksheet.fit_to_pages(1, 0)
 
-                st.success("✅ สร้างใบส่งสินค้าเรียบร้อย รหัสไม่มีจุดทศนิยมกวนใจ!")
+                st.success("✅ สร้างใบส่งสินค้าเรียบร้อยแล้ว!")
                 st.download_button("📥 ดาวน์โหลดไฟล์ DO Master", output_do.getvalue(), "Intanin_DO_BD_Edition.xlsx")
 
     # ========================================================
-    # 📊 MODE 2: ANALYTICS DASHBOARD (บอร์ดวิเคราะห์ข้อมูล)
+    # 📊 MODE 2: ANALYTICS DASHBOARD
     # ========================================================
     elif app_mode == "📊 Analytics Dashboard (วิเคราะห์ข้อมูล)":
         st.markdown("<h3 style='font-weight:600;'>📊 Business Development Advanced Analytics</h3>", unsafe_allow_html=True)
-        
         df_dash = df_clean_rows.copy()
         df_dash['รหัสสาขา'] = df_dash['รหัสสาขา'].apply(clean_code_to_str)
         df_dash['รหัสสินค้า'] = df_dash['รหัสสินค้า'].apply(clean_code_to_str)
@@ -339,7 +329,6 @@ if 'df_raw' in st.session_state:
         
         st.markdown("##### 🎯 ตัวกรองเลือกดูข้อมูลเฉพาะกลุ่ม")
         col_f1, col_f2 = st.columns(2)
-        
         with col_f1:
             zone_options = ["ทั้งหมด"] + sorted(list(df_dash['โซน'].dropna().unique())) if 'โซน' in df_dash.columns else ["ทั้งหมด"]
             selected_zone = st.selectbox("เลือกดูข้อมูลเฉพาะ โซน:", zone_options)
@@ -348,68 +337,46 @@ if 'df_raw' in st.session_state:
             selected_sup = st.selectbox("เลือกดูข้อมูลเฉพาะ ซัพพลายเออร์:", sup_options)
 
         df_filtered = df_dash.copy()
-        if selected_zone != "ทั้งหมด":
-            df_filtered = df_filtered[df_filtered['โซน'] == selected_zone]
-        if selected_sup != "ทั้งหมด":
-            df_filtered = df_filtered[df_filtered['ซัพพลายเออร์'] == selected_sup]
+        if selected_zone != "ทั้งหมด": df_filtered = df_filtered[df_filtered['โซน'] == selected_zone]
+        if selected_sup != "ทั้งหมด": df_filtered = df_filtered[df_filtered['ซัพพลายเออร์'] == selected_sup]
             
         st.markdown("---")
-        
         c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.markdown(f"<div class='kpi-card'>🏷️ <b>ซัพพลายเออร์ในกลุ่ม</b><br><span style='font-size:1.8rem; font-weight:700; color:#2e7d32;'>{df_filtered['ซัพพลายเออร์'].nunique() if 'ซัพพลายเออร์' in df_filtered.columns else 0}</span> ราย</div>", unsafe_allow_html=True)
-        with c2:
-            st.markdown(f"<div class='kpi-card'>🏪 <b>สาขาในกลุ่ม</b><br><span style='font-size:1.8rem; font-weight:700; color:#2e7d32;'>{df_filtered['Store Name'].nunique() if 'Store Name' in df_filtered.columns else 0}</span> สาขา</div>", unsafe_allow_html=True)
-        with c3:
-            st.markdown(f"<div class='kpi-card'>📦 <b>รายการสินค้า (SKU)</b><br><span style='font-size:1.8rem; font-weight:700; color:#2e7d32;'>{df_filtered['รายการสินค้า'].nunique() if 'รายการสินค้า' in df_filtered.columns else 0}</span> รายการ</div>", unsafe_allow_html=True)
-        with c4:
-            st.markdown(f"<div class='kpi-card'>🚚 <b>ปริมาณการสั่งซื้อรวม</b><br><span style='font-size:1.8rem; font-weight:700; color:#2e7d32;'>{int(df_filtered[col_qty].sum()):,}</span> ชิ้น</div>", unsafe_allow_html=True)
+        with c1: st.markdown(f"<div class='kpi-card'>🏷️ <b>ซัพพลายเออร์ในกลุ่ม</b><br><span style='font-size:1.8rem; font-weight:700; color:#2e7d32;'>{df_filtered['ซัพพลายเออร์'].nunique() if 'ซัพพลายเออร์' in df_filtered.columns else 0}</span> ราย</div>", unsafe_allow_html=True)
+        with c2: st.markdown(f"<div class='kpi-card'>🏪 <b>สาขาในกลุ่ม</b><br><span style='font-size:1.8rem; font-weight:700; color:#2e7d32;'>{df_filtered['Store Name'].nunique() if 'Store Name' in df_filtered.columns else 0}</span> สาขา</div>", unsafe_allow_html=True)
+        with c3: st.markdown(f"<div class='kpi-card'>📦 <b>รายการสินค้า (SKU)</b><br><span style='font-size:1.8rem; font-weight:700; color:#2e7d32;'>{df_filtered['รายการสินค้า'].nunique() if 'รายการสินค้า' in df_filtered.columns else 0}</span> รายการ</div>", unsafe_allow_html=True)
+        with c4: st.markdown(f"<div class='kpi-card'>🚚 <b>ปริมาณการสั่งซื้อรวม</b><br><span style='font-size:1.8rem; font-weight:700; color:#2e7d32;'>{int(df_filtered[col_qty].sum()):,}</span> ชิ้น</div>", unsafe_allow_html=True)
             
         st.markdown("<br>", unsafe_allow_html=True)
-        
         col_ctrl1, col_ctrl2 = st.columns([1, 2])
-        with col_ctrl1:
-            chart_type = st.radio("รูปแบบกราฟจัดอันดับสาขา:", ["📊 กราฟแท่ง (Bar)", "🍩 กราฟโดนัท (Donut)"])
-        with col_ctrl2:
-            top_n = st.slider("เลือกจำนวนสาขาที่แสดงผลสูงสุด (Top N):", min_value=3, max_value=20, value=10)
+        with col_ctrl1: chart_type = st.radio("รูปแบบกราฟจัดอันดับสาขา:", ["📊 กราฟแท่ง (Bar)", "🍩 กราฟโดนัท (Donut)"])
+        with col_ctrl2: top_n = st.slider("เลือกจำนวนสาขาที่แสดงผลสูงสุด (Top N):", min_value=3, max_value=20, value=10)
             
         st.markdown("---")
-
         st.markdown(f"##### 🏪 อันดับสาขาที่มียอดสั่งซื้อสูงสุด {top_n} อันดับแรก")
-        df_branch_summary = df_filtered.groupby('Store Name', as_index=False)[col_qty].sum()
-        df_branch_summary = df_branch_summary.sort_values(by=col_qty, ascending=False).head(top_n)
+        df_branch_summary = df_filtered.groupby('Store Name', as_index=False)[col_qty].sum().sort_values(by=col_qty, ascending=False).head(top_n)
         
         if not df_branch_summary.empty:
             if chart_type == "📊 กราฟแท่ง (Bar)":
-                fig = px.bar(
-                    df_branch_summary, x=col_qty, y='Store Name', orientation='h', text_auto=',',
-                    labels={col_qty: 'ปริมาณการสั่งซื้อ (ชิ้น)', 'Store Name': 'ชื่อสาขา'},
-                    color=col_qty, color_continuous_scale='Greens'
-                )
-                fig.update_layout(yaxis={'categoryorder':'total ascending'}, margin=dict(l=20, r=20, t=20, b=20), height=400)
+                fig = px.bar(df_branch_summary, x=col_qty, y='Store Name', orientation='h', text_auto=',', color=col_qty, color_continuous_scale='Greens')
+                fig.update_layout(yaxis={'categoryorder':'total ascending'}, height=400)
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 fig = px.pie(df_branch_summary, values=col_qty, names='Store Name', hole=0.5)
-                fig.update_traces(textinfo='percent+label', marker=dict(colors=px.colors.sequential.Greens_r))
-                fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=400)
+                fig.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("💡 ไม่พบข้อมูลในเงื่อนไขการกรองนี้ กรุณาเคลียร์หรือเลือกตัวกรองใหม่ด้านบน")
+            st.info("💡 ไม่พบข้อมูลในเงื่อนไขการกรองนี้")
 
         st.markdown("---")
-        st.markdown("##### 💡 ตารางแสดงอันดับสินค้าและสัดส่วนงานจัดส่งย่อย")
-        df_prod_summary = df_filtered.groupby(['รหัสสินค้า', 'รายการสินค้า'], as_index=False)[col_qty].sum()
-        df_prod_summary = df_prod_summary.sort_values(by=col_qty, ascending=False).rename(columns={col_qty: 'ปริมาณสั่งซื้อ (ชิ้น)'}).reset_index(drop=True)
+        df_prod_summary = df_filtered.groupby(['รหัสสินค้า', 'รายการสินค้า'], as_index=False)[col_qty].sum().sort_values(by=col_qty, ascending=False).rename(columns={col_qty: 'ปริมาณสั่งซื้อ (ชิ้น)'}).reset_index(drop=True)
         df_prod_summary.index = df_prod_summary.index + 1
-        
         col_table, col_pie = st.columns([3, 2])
-        with col_table:
-            st.dataframe(df_prod_summary, use_container_width=True)
+        with col_table: st.dataframe(df_prod_summary, use_container_width=True)
         with col_pie:
             if 'ซัพพลายเออร์' in df_filtered.columns:
                 df_sup_share = df_filtered.groupby('ซัพพลายเออร์')[col_qty].sum().reset_index()
                 fig_sup = px.pie(df_sup_share, values=col_qty, names='ซัพพลายเออร์', hole=0.3)
-                fig_sup.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=260)
                 st.plotly_chart(fig_sup, use_container_width=True)
 else:
-    st.info("👋 ยินดีต้อนรับ! กรุณาทำการอัปโหลดไฟล์เอกสาร Excel ที่ช่องด้านบนก่อน เพื่อเปิดใช้งานระบบประมวลผลและบอร์ดวิเคราะห์ข้อมูล")
+    st.info("📂 กรุณาทำการอัปโหลดไฟล์เอกสาร Excel ที่ช่องด้านบนก่อน เพื่อเปิดใช้งานระบบ")
