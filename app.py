@@ -21,15 +21,14 @@ REDIRECT_URI = st.secrets.get("google", {}).get("redirect_uri", "http://localhos
 # กำหนดสิทธิ์โดเมนอีเมลบริษัทที่อนุญาตให้เข้าใช้งานระบบนี้
 ALLOWED_COMPANY_DOMAIN = "@mobilelogistics.co.th"  # ⚠️ เปลี่ยนเป็นโดเมนอีเมลบริษัทของคุณ เช่น @intanin.com หรือ @mobilelogistics.co.th
 
-# 2. เรียกใช้งานฟังก์ชัน Authenticate ครอบตัวเว็บแอป
+# 2. เรียกใช้งานฟังก์ชัน Authenticate (ปรับปรุงพารามิเตอร์ให้ตรงกับเวอร์ชันปัจจุบัน)
 authenticator = Authenticate(
-    secret_key="intanin_bd_system_secure_session_key_random",
     client_id=GOOGLE_CLIENT_ID,
     client_secret=GOOGLE_CLIENT_SECRET,
     redirect_uri=REDIRECT_URI,
     cookie_name="intanin_auth_cookie",
-    cookie_key="intanin_bd_cookie_secure_key_random",
-    cookie_expiry_days=1 # ให้พนักงานล็อกอินค้างไว้ได้สูงสุด 1 วันต่อการเข้าใช้
+    cookie_secret="intanin_bd_system_secure_session_key_random", # เปลี่ยนเป็นชื่อนี้
+    cookie_expiry_days=1
 )
 
 # ตรวจสอบสถานะว่าเคยล็อกอินค้างไว้หรือไม่
